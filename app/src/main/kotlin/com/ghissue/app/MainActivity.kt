@@ -125,7 +125,8 @@ class MainActivity : AppCompatActivity() {
         verificationUri: String,
         interval: Int
     ) {
-        binding.textDeviceCode.text = getString(R.string.device_flow_code_label, userCode)
+        binding.textDeviceCode.text = userCode
+        binding.textDeviceCodeLabel.visibility = View.VISIBLE
         binding.textDeviceCode.visibility = View.VISIBLE
         binding.btnOpenBrowser.visibility = View.VISIBLE
         binding.textWaiting.visibility = View.VISIBLE
@@ -174,6 +175,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun hideDeviceCodeViews() {
+        binding.textDeviceCodeLabel.visibility = View.GONE
         binding.textDeviceCode.visibility = View.GONE
         binding.btnOpenBrowser.visibility = View.GONE
         binding.textWaiting.visibility = View.GONE
