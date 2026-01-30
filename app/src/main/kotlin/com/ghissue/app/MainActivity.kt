@@ -1,5 +1,7 @@
 package com.ghissue.app
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -40,6 +42,19 @@ class MainActivity : AppCompatActivity() {
         binding.btnLogin.setOnClickListener { startOAuthFlow() }
         binding.btnLogout.setOnClickListener { logout() }
         binding.btnSelectRepo.setOnClickListener { selectRepo() }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (pollJob == null && prefsStore.hasPendingDeviceFlow) {
+            startDeviceCodePolling(
+                prefsStore.clientId,
+                prefsStore.pendingDeviceCode!!,
+                prefsStore.pendingUserCode!!,
+                prefsStore.pendingVerificationUri!!,
+                prefsStore.pendingInterval
+            )
+        }
     }
 
     override fun onDestroy() {
@@ -106,6 +121,12 @@ class MainActivity : AppCompatActivity() {
                 val deviceCode = ApiClient.gitHubOAuthApi.requestDeviceCode(
                     DeviceCodeRequest(clientId = clientId, scope = "repo")
                 )
+                prefsStore.pendingDeviceCode = deviceCode.deviceCode
+                prefsStore.pendingUserCode = deviceCode.userCode
+                prefsStore.pendingVerificationUri = deviceCode.verificationUri
+                prefsStore.pendingInterval = deviceCode.interval
+                prefsStore.pendingExpiresAt = System.currentTimeMillis() + deviceCode.expiresIn * 1000L
+
                 startDeviceCodePolling(clientId, deviceCode.deviceCode, deviceCode.userCode,
                     deviceCode.verificationUri, deviceCode.interval)
             } catch (e: Exception) {
@@ -128,8 +149,15 @@ class MainActivity : AppCompatActivity() {
         binding.textDeviceCode.text = userCode
         binding.textDeviceCodeLabel.visibility = View.VISIBLE
         binding.textDeviceCode.visibility = View.VISIBLE
+        binding.btnCopyCode.visibility = View.VISIBLE
         binding.btnOpenBrowser.visibility = View.VISIBLE
         binding.textWaiting.visibility = View.VISIBLE
+
+        binding.btnCopyCode.setOnClickListener {
+            val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText("device code", userCode))
+            Toast.makeText(this, R.string.code_copied, Toast.LENGTH_SHORT).show()
+        }
 
         binding.btnOpenBrowser.setOnClickListener {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(verificationUri)))
@@ -175,8 +203,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun hideDeviceCodeViews() {
+        prefsStore.clearPendingDeviceFlow()
+        pollJob = null
         binding.textDeviceCodeLabel.visibility = View.GONE
         binding.textDeviceCode.visibility = View.GONE
+        binding.btnCopyCode.visibility = View.GONE
         binding.btnOpenBrowser.visibility = View.GONE
         binding.textWaiting.visibility = View.GONE
     }

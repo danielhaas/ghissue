@@ -24,10 +24,49 @@ class PrefsStore(context: Context) {
         get() = clientId.isNotBlank()
                 && repoOwner.isNotBlank() && repoName.isNotBlank()
 
+    // Pending device flow state (survives process death)
+    var pendingDeviceCode: String?
+        get() = prefs.getString(KEY_PENDING_DEVICE_CODE, null)
+        set(value) = prefs.edit().putString(KEY_PENDING_DEVICE_CODE, value).apply()
+
+    var pendingUserCode: String?
+        get() = prefs.getString(KEY_PENDING_USER_CODE, null)
+        set(value) = prefs.edit().putString(KEY_PENDING_USER_CODE, value).apply()
+
+    var pendingVerificationUri: String?
+        get() = prefs.getString(KEY_PENDING_VERIFICATION_URI, null)
+        set(value) = prefs.edit().putString(KEY_PENDING_VERIFICATION_URI, value).apply()
+
+    var pendingInterval: Int
+        get() = prefs.getInt(KEY_PENDING_INTERVAL, 5)
+        set(value) = prefs.edit().putInt(KEY_PENDING_INTERVAL, value).apply()
+
+    var pendingExpiresAt: Long
+        get() = prefs.getLong(KEY_PENDING_EXPIRES_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_PENDING_EXPIRES_AT, value).apply()
+
+    val hasPendingDeviceFlow: Boolean
+        get() = pendingDeviceCode != null && System.currentTimeMillis() < pendingExpiresAt
+
+    fun clearPendingDeviceFlow() {
+        prefs.edit()
+            .remove(KEY_PENDING_DEVICE_CODE)
+            .remove(KEY_PENDING_USER_CODE)
+            .remove(KEY_PENDING_VERIFICATION_URI)
+            .remove(KEY_PENDING_INTERVAL)
+            .remove(KEY_PENDING_EXPIRES_AT)
+            .apply()
+    }
+
     companion object {
         private const val DEFAULT_CLIENT_ID = "Ov23liDuXSl6yUoPGfue"
         private const val KEY_CLIENT_ID = "client_id"
         private const val KEY_REPO_OWNER = "repo_owner"
         private const val KEY_REPO_NAME = "repo_name"
+        private const val KEY_PENDING_DEVICE_CODE = "pending_device_code"
+        private const val KEY_PENDING_USER_CODE = "pending_user_code"
+        private const val KEY_PENDING_VERIFICATION_URI = "pending_verification_uri"
+        private const val KEY_PENDING_INTERVAL = "pending_interval"
+        private const val KEY_PENDING_EXPIRES_AT = "pending_expires_at"
     }
 }
