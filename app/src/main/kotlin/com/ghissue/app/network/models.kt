@@ -6,7 +6,8 @@ import com.squareup.moshi.JsonClass
 @JsonClass(generateAdapter = false)
 data class CreateIssueRequest(
     @Json(name = "title") val title: String,
-    @Json(name = "body") val body: String? = null
+    @Json(name = "body") val body: String? = null,
+    @Json(name = "labels") val labels: List<String>? = null
 )
 
 @JsonClass(generateAdapter = false)
@@ -58,4 +59,10 @@ data class RepoResponse(
 @JsonClass(generateAdapter = false)
 data class RepoOwner(
     @Json(name = "login") val login: String
+)
+
+@JsonClass(generateAdapter = false)
+data class LabelResponse(
+    @Json(name = "name") val name: String,
+    @Json(name = "color") val color: String
 )

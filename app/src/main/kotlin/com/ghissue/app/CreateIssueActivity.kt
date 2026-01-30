@@ -10,6 +10,7 @@ import com.ghissue.app.network.ApiClient
 import com.ghissue.app.network.CreateIssueRequest
 import com.ghissue.app.storage.PrefsStore
 import com.ghissue.app.storage.TokenStore
+import com.google.android.material.chip.Chip
 import kotlinx.coroutines.launch
 
 class CreateIssueActivity : AppCompatActivity() {
@@ -38,10 +39,37 @@ class CreateIssueActivity : AppCompatActivity() {
             return
         }
 
-        binding.textRepoHeader.text = "${prefsStore.repoOwner}/${prefsStore.repoName}"
+        binding.textRepoHeader.text = prefsStore.repoName
+        binding.textUsernameHeader.text = prefsStore.repoOwner
 
         binding.btnCancel.setOnClickListener { finish() }
         binding.btnSubmit.setOnClickListener { submitIssue() }
+
+        fetchLabels()
+    }
+
+    private fun fetchLabels() {
+        lifecycleScope.launch {
+            try {
+                val token = "Bearer ${tokenStore.accessToken}"
+                val labels = ApiClient.gitHubApi.listLabels(
+                    token = token,
+                    owner = prefsStore.repoOwner,
+                    repo = prefsStore.repoName
+                )
+                for (label in labels) {
+                    val chip = Chip(this@CreateIssueActivity)
+                    chip.text = label.name
+                    chip.isCheckable = true
+                    binding.chipGroupLabels.addView(chip)
+                }
+                if (labels.isNotEmpty()) {
+                    binding.chipGroupLabels.visibility = View.VISIBLE
+                }
+            } catch (_: Exception) {
+                // Silently skip if label fetch fails
+            }
+        }
     }
 
     private fun submitIssue() {
@@ -53,6 +81,12 @@ class CreateIssueActivity : AppCompatActivity() {
 
         val body = binding.editIssueBody.text.toString().trim().ifBlank { null }
 
+        val selectedLabels = (0 until binding.chipGroupLabels.childCount)
+            .map { binding.chipGroupLabels.getChildAt(it) as Chip }
+            .filter { it.isChecked }
+            .map { it.text.toString() }
+            .ifEmpty { null }
+
         setLoading(true)
 
         lifecycleScope.launch {
@@ -62,7 +96,7 @@ class CreateIssueActivity : AppCompatActivity() {
                     token = token,
                     owner = prefsStore.repoOwner,
                     repo = prefsStore.repoName,
-                    request = CreateIssueRequest(title = title, body = body)
+                    request = CreateIssueRequest(title = title, body = body, labels = selectedLabels)
                 )
                 Toast.makeText(
                     this@CreateIssueActivity,
@@ -87,5 +121,9 @@ class CreateIssueActivity : AppCompatActivity() {
         binding.btnCancel.isEnabled = !loading
         binding.editIssueTitle.isEnabled = !loading
         binding.editIssueBody.isEnabled = !loading
+        binding.chipGroupLabels.isEnabled = !loading
+        for (i in 0 until binding.chipGroupLabels.childCount) {
+            binding.chipGroupLabels.getChildAt(i).isEnabled = !loading
+        }
     }
 }

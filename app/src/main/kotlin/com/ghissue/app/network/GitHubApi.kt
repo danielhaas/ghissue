@@ -17,6 +17,14 @@ interface GitHubApi {
         @Body request: CreateIssueRequest
     ): IssueResponse
 
+    @GET("repos/{owner}/{repo}/labels")
+    suspend fun listLabels(
+        @Header("Authorization") token: String,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Query("per_page") perPage: Int = 100
+    ): List<LabelResponse>
+
     @GET("user/repos")
     suspend fun listRepos(
         @Header("Authorization") token: String,
