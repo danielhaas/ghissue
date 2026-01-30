@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ghissue</string>
+    <string name="widget_name">Create Issue</string>
+    <string name="widget_description">Tap to create a GitHub issue</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="label_client_id">Client ID</string>
+    <string name="label_repo_owner">Repository Owner</string>
+    <string name="label_repo_name">Repository Name</string>
+    <string name="btn_save">Save</string>
+    <string name="btn_login">Login with GitHub</string>
+    <string name="btn_logout">Logout</string>
+    <string name="status_logged_in">Logged in</string>
+    <string name="status_not_logged_in">Not logged in</string>
+    <string name="settings_saved">Settings saved</string>
+    <string name="oauth_section">OAuth App</string>
+    <string name="repo_section">Repository</string>
+
+    <!-- Create Issue -->
+    <string name="create_issue_title">New Issue</string>
+    <string name="hint_issue_title">Title</string>
+    <string name="hint_issue_body">Body (optional)</string>
+    <string name="btn_submit">Submit</string>
+    <string name="btn_cancel">Cancel</string>
+    <string name="issue_created">Issue created!</string>
+    <string name="error_title_required">Title is required</string>
+    <string name="error_not_configured">Please configure the app first</string>
+    <string name="error_not_logged_in">Please log in first</string>
+    <string name="error_creating_issue">Failed to create issue: %1$s</string>
+
+    <!-- OAuth -->
+    <string name="oauth_error">OAuth failed: %1$s</string>
+    <string name="oauth_success">Login successful!</string>
+    <string name="error_missing_oauth_config">Please set Client ID first</string>
+
+    <!-- Device Flow -->
+    <string name="device_flow_title">Login with GitHub</string>
+    <string name="device_flow_message">Enter the code %1$s at:\n%2$s</string>
+    <string name="device_flow_waiting">Waiting for authorization…</string>
+    <string name="device_flow_open_browser">Open Browser</string>
+    <string name="device_flow_expired">Login session expired. Please try again.</string>
+</resources>

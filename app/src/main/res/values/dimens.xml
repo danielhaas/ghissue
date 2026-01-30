@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="activity_margin">16dp</dimen>
+    <dimen name="section_spacing">24dp</dimen>
+    <dimen name="field_spacing">8dp</dimen>
+    <dimen name="widget_icon_size">48dp</dimen>
+</resources>
