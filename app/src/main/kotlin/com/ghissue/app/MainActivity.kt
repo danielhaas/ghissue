@@ -106,7 +106,7 @@ class MainActivity : AppCompatActivity() {
                 val deviceCode = ApiClient.gitHubOAuthApi.requestDeviceCode(
                     DeviceCodeRequest(clientId = clientId, scope = "repo")
                 )
-                showDeviceCodeDialog(clientId, deviceCode.deviceCode, deviceCode.userCode,
+                startDeviceCodePolling(clientId, deviceCode.deviceCode, deviceCode.userCode,
                     deviceCode.verificationUri, deviceCode.interval)
             } catch (e: Exception) {
                 Toast.makeText(
@@ -118,22 +118,21 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showDeviceCodeDialog(
+    private fun startDeviceCodePolling(
         clientId: String,
         deviceCode: String,
         userCode: String,
         verificationUri: String,
         interval: Int
     ) {
-        val dialog = MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.device_flow_title)
-            .setMessage(getString(R.string.device_flow_message, userCode, verificationUri))
-            .setPositiveButton(R.string.device_flow_open_browser) { _, _ ->
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(verificationUri)))
-            }
-            .setNegativeButton(R.string.btn_cancel, null)
-            .setOnDismissListener { pollJob?.cancel() }
-            .show()
+        binding.textDeviceCode.text = getString(R.string.device_flow_code_label, userCode)
+        binding.textDeviceCode.visibility = View.VISIBLE
+        binding.btnOpenBrowser.visibility = View.VISIBLE
+        binding.textWaiting.visibility = View.VISIBLE
+
+        binding.btnOpenBrowser.setOnClickListener {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(verificationUri)))
+        }
 
         pollJob = lifecycleScope.launch {
             var currentInterval = interval.toLong()
@@ -145,7 +144,7 @@ class MainActivity : AppCompatActivity() {
                     )
                     if (!response.accessToken.isNullOrBlank()) {
                         tokenStore.accessToken = response.accessToken
-                        dialog.dismiss()
+                        hideDeviceCodeViews()
                         Toast.makeText(this@MainActivity, R.string.oauth_success, Toast.LENGTH_SHORT).show()
                         updateLoginStatus()
                         return@launch
@@ -154,24 +153,30 @@ class MainActivity : AppCompatActivity() {
                         "authorization_pending" -> { /* keep polling */ }
                         "slow_down" -> currentInterval += 5
                         "expired_token" -> {
-                            dialog.dismiss()
+                            hideDeviceCodeViews()
                             Toast.makeText(this@MainActivity, R.string.device_flow_expired, Toast.LENGTH_LONG).show()
                             return@launch
                         }
                         else -> {
-                            dialog.dismiss()
+                            hideDeviceCodeViews()
                             val msg = response.errorDescription ?: response.error ?: "Unknown error"
                             Toast.makeText(this@MainActivity, getString(R.string.oauth_error, msg), Toast.LENGTH_LONG).show()
                             return@launch
                         }
                     }
                 } catch (e: Exception) {
-                    dialog.dismiss()
+                    hideDeviceCodeViews()
                     Toast.makeText(this@MainActivity, getString(R.string.oauth_error, e.message), Toast.LENGTH_LONG).show()
                     return@launch
                 }
             }
         }
+    }
+
+    private fun hideDeviceCodeViews() {
+        binding.textDeviceCode.visibility = View.GONE
+        binding.btnOpenBrowser.visibility = View.GONE
+        binding.textWaiting.visibility = View.GONE
     }
 
     private fun logout() {
@@ -186,6 +191,6 @@ class MainActivity : AppCompatActivity() {
         )
         binding.btnLogin.visibility = if (loggedIn) View.GONE else View.VISIBLE
         binding.btnLogout.visibility = if (loggedIn) View.VISIBLE else View.GONE
-        binding.btnSelectRepo.isEnabled = loggedIn
+        binding.groupRepoSection.visibility = if (loggedIn) View.VISIBLE else View.GONE
     }
 }

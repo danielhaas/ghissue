@@ -11,7 +11,8 @@
         android:orientation="vertical"
         android:padding="@dimen/activity_margin">
 
-        <!-- OAuth Section -->
+        <!-- Stage 1: Login -->
+
         <com.google.android.material.textview.MaterialTextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -34,39 +35,50 @@
                 android:singleLine="true" />
         </com.google.android.material.textfield.TextInputLayout>
 
-        <!-- Repo Section -->
-        <com.google.android.material.textview.MaterialTextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/repo_section"
-            android:textAppearance="?attr/textAppearanceTitleMedium"
-            android:layout_marginTop="@dimen/section_spacing"
-            android:layout_marginBottom="@dimen/field_spacing" />
-
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/textSelectedRepo"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/no_repo_selected"
-            android:textAppearance="?attr/textAppearanceBodyLarge"
-            android:layout_marginBottom="@dimen/field_spacing" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnSelectRepo"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/btn_select_repo"
-            android:enabled="false"
-            android:layout_marginBottom="@dimen/field_spacing" />
-
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnSave"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/btn_save"
-            android:layout_marginBottom="@dimen/section_spacing" />
+            android:layout_marginBottom="@dimen/field_spacing" />
 
-        <!-- Login Section -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnLogin"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/btn_login"
+            android:layout_marginBottom="@dimen/field_spacing"
+            style="@style/Widget.Material3.Button.TonalButton" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/textDeviceCode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textIsSelectable="true"
+            android:textAppearance="?attr/textAppearanceHeadlineSmall"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:layout_marginBottom="@dimen/field_spacing"
+            android:visibility="gone" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnOpenBrowser"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/device_flow_open_browser"
+            android:layout_marginBottom="@dimen/field_spacing"
+            android:visibility="gone"
+            style="@style/Widget.Material3.Button.OutlinedButton" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/textWaiting"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/device_flow_waiting"
+            android:gravity="center"
+            android:layout_marginBottom="@dimen/field_spacing"
+            android:visibility="gone" />
+
         <com.google.android.material.divider.MaterialDivider
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -81,19 +93,46 @@
             android:layout_marginBottom="@dimen/field_spacing" />
 
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnLogin"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/btn_login"
-            style="@style/Widget.Material3.Button.TonalButton" />
-
-        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnLogout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/btn_logout"
             android:visibility="gone"
             style="@style/Widget.Material3.Button.OutlinedButton" />
+
+        <!-- Stage 2: Repository (visible only when logged in) -->
+
+        <LinearLayout
+            android:id="@+id/groupRepoSection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="@dimen/section_spacing"
+            android:visibility="gone">
+
+            <com.google.android.material.textview.MaterialTextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/repo_section"
+                android:textAppearance="?attr/textAppearanceTitleMedium"
+                android:layout_marginBottom="@dimen/field_spacing" />
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/textSelectedRepo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/no_repo_selected"
+                android:textAppearance="?attr/textAppearanceBodyLarge"
+                android:layout_marginBottom="@dimen/field_spacing" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSelectRepo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/btn_select_repo"
+                android:layout_marginBottom="@dimen/field_spacing" />
+
+        </LinearLayout>
 
     </LinearLayout>
 </ScrollView>

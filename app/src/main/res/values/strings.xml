@@ -40,6 +40,7 @@
     <!-- Device Flow -->
     <string name="device_flow_title">Login with GitHub</string>
     <string name="device_flow_message">Enter the code %1$s at:\n%2$s</string>
+    <string name="device_flow_code_label">Your code: %1$s</string>
     <string name="device_flow_waiting">Waiting for authorization…</string>
     <string name="device_flow_open_browser">Open Browser</string>
     <string name="device_flow_expired">Login session expired. Please try again.</string>
