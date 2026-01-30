@@ -47,3 +47,15 @@ data class OAuthTokenResponse(
     @Json(name = "error") val error: String?,
     @Json(name = "error_description") val errorDescription: String?
 )
+
+@JsonClass(generateAdapter = false)
+data class RepoResponse(
+    @Json(name = "full_name") val fullName: String,
+    @Json(name = "name") val name: String,
+    @Json(name = "owner") val owner: RepoOwner
+)
+
+@JsonClass(generateAdapter = false)
+data class RepoOwner(
+    @Json(name = "login") val login: String
+)

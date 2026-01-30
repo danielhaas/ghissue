@@ -43,35 +43,21 @@
             android:layout_marginTop="@dimen/section_spacing"
             android:layout_marginBottom="@dimen/field_spacing" />
 
-        <com.google.android.material.textfield.TextInputLayout
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/textSelectedRepo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/no_repo_selected"
+            android:textAppearance="?attr/textAppearanceBodyLarge"
+            android:layout_marginBottom="@dimen/field_spacing" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSelectRepo"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="@string/label_repo_owner"
-            android:layout_marginBottom="@dimen/field_spacing"
-            app:endIconMode="clear_text">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/editRepoOwner"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="text"
-                android:singleLine="true" />
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <com.google.android.material.textfield.TextInputLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/label_repo_name"
-            android:layout_marginBottom="@dimen/section_spacing"
-            app:endIconMode="clear_text">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/editRepoName"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="text"
-                android:singleLine="true" />
-        </com.google.android.material.textfield.TextInputLayout>
+            android:text="@string/btn_select_repo"
+            android:enabled="false"
+            android:layout_marginBottom="@dimen/field_spacing" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnSave"

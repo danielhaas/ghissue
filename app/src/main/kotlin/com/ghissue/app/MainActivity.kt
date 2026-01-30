@@ -39,6 +39,7 @@ class MainActivity : AppCompatActivity() {
         binding.btnSave.setOnClickListener { saveSettings() }
         binding.btnLogin.setOnClickListener { startOAuthFlow() }
         binding.btnLogout.setOnClickListener { logout() }
+        binding.btnSelectRepo.setOnClickListener { selectRepo() }
     }
 
     override fun onDestroy() {
@@ -48,15 +49,47 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadSettings() {
         binding.editClientId.setText(prefsStore.clientId)
-        binding.editRepoOwner.setText(prefsStore.repoOwner)
-        binding.editRepoName.setText(prefsStore.repoName)
+        updateSelectedRepoLabel()
     }
 
     private fun saveSettings() {
         prefsStore.clientId = binding.editClientId.text.toString().trim()
-        prefsStore.repoOwner = binding.editRepoOwner.text.toString().trim()
-        prefsStore.repoName = binding.editRepoName.text.toString().trim()
         Toast.makeText(this, R.string.settings_saved, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun updateSelectedRepoLabel() {
+        val owner = prefsStore.repoOwner
+        val name = prefsStore.repoName
+        if (owner.isNotBlank() && name.isNotBlank()) {
+            binding.textSelectedRepo.text = "$owner/$name"
+        } else {
+            binding.textSelectedRepo.setText(R.string.no_repo_selected)
+        }
+    }
+
+    private fun selectRepo() {
+        val token = tokenStore.accessToken ?: return
+        lifecycleScope.launch {
+            try {
+                val repos = ApiClient.gitHubApi.listRepos("Bearer $token")
+                val repoNames = repos.map { it.fullName }.toTypedArray()
+                MaterialAlertDialogBuilder(this@MainActivity)
+                    .setTitle(R.string.select_repo_title)
+                    .setItems(repoNames) { _, which ->
+                        val selected = repos[which]
+                        prefsStore.repoOwner = selected.owner.login
+                        prefsStore.repoName = selected.name
+                        updateSelectedRepoLabel()
+                    }
+                    .show()
+            } catch (e: Exception) {
+                Toast.makeText(
+                    this@MainActivity,
+                    getString(R.string.error_loading_repos, e.message),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
     }
 
     private fun startOAuthFlow() {
@@ -153,5 +186,6 @@ class MainActivity : AppCompatActivity() {
         )
         binding.btnLogin.visibility = if (loggedIn) View.GONE else View.VISIBLE
         binding.btnLogout.visibility = if (loggedIn) View.VISIBLE else View.GONE
+        binding.btnSelectRepo.isEnabled = loggedIn
     }
 }
