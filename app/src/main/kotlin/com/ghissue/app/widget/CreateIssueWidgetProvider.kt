@@ -8,8 +8,9 @@ import android.content.Intent
 import android.widget.RemoteViews
 import com.ghissue.app.CreateIssueActivity
 import com.ghissue.app.R
+import com.ghissue.app.storage.PrefsStore
 
-class CreateIssueWidgetProvider : AppWidgetProvider() {
+open class CreateIssueWidgetProvider : AppWidgetProvider() {
 
     override fun onUpdate(
         context: Context,
@@ -21,14 +22,24 @@ class CreateIssueWidgetProvider : AppWidgetProvider() {
         }
     }
 
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        val prefsStore = PrefsStore(context)
+        for (widgetId in appWidgetIds) {
+            prefsStore.clearWidgetRepo(widgetId)
+        }
+    }
+
     companion object {
-        private fun updateWidget(
+        const val EXTRA_WIDGET_ID = "extra_widget_id"
+
+        fun updateWidget(
             context: Context,
             appWidgetManager: AppWidgetManager,
             widgetId: Int
         ) {
             val intent = Intent(context, CreateIssueActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra(EXTRA_WIDGET_ID, widgetId)
             }
 
             val pendingIntent = PendingIntent.getActivity(
@@ -38,8 +49,15 @@ class CreateIssueWidgetProvider : AppWidgetProvider() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
+            val prefsStore = PrefsStore(context)
+            val widgetRepo = prefsStore.getWidgetRepo(widgetId)
+            val repoLabel = widgetRepo?.second
+                ?: prefsStore.repoName.ifBlank { null }
+                ?: ""
+
             val views = RemoteViews(context.packageName, R.layout.widget_create_issue).apply {
                 setOnClickPendingIntent(R.id.widgetButton, pendingIntent)
+                setTextViewText(R.id.widgetRepoLabel, repoLabel)
             }
 
             appWidgetManager.updateAppWidget(widgetId, views)

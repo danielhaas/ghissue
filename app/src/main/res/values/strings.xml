@@ -3,6 +3,8 @@
     <string name="app_name">ghissue</string>
     <string name="widget_name">Create Issue</string>
     <string name="widget_description">Tap to create a GitHub issue</string>
+    <string name="widget_description_wide">Tap to create a GitHub issue (wide)</string>
+    <string name="widget_name_wide">Create Issue (wide)</string>
 
     <!-- Settings -->
     <string name="settings_title">Settings</string>
@@ -12,6 +14,7 @@
     <string name="no_repo_selected">No repository selected</string>
     <string name="select_repo_title">Select Repository</string>
     <string name="error_loading_repos">Failed to load repositories: %1$s</string>
+    <string name="no_repos_found">No repositories found</string>
     <string name="btn_save">Save</string>
     <string name="btn_login">Login with GitHub</string>
     <string name="btn_logout">Logout</string>

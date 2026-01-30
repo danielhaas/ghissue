@@ -13,6 +13,8 @@ import com.ghissue.app.network.ApiClient
 import com.ghissue.app.network.CreateIssueRequest
 import com.ghissue.app.storage.PrefsStore
 import com.ghissue.app.storage.TokenStore
+import com.ghissue.app.widget.CreateIssueWidgetProvider
+import android.appwidget.AppWidgetManager
 import android.content.res.ColorStateList
 import com.google.android.material.chip.Chip
 import kotlinx.coroutines.launch
@@ -22,6 +24,8 @@ class CreateIssueActivity : AppCompatActivity() {
     private lateinit var binding: ActivityCreateIssueBinding
     private lateinit var prefsStore: PrefsStore
     private lateinit var tokenStore: TokenStore
+    private var repoOwner: String = ""
+    private var repoName: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -31,7 +35,18 @@ class CreateIssueActivity : AppCompatActivity() {
         prefsStore = PrefsStore(this)
         tokenStore = TokenStore(this)
 
-        if (!prefsStore.isConfigured) {
+        val widgetId = intent.getIntExtra(
+            CreateIssueWidgetProvider.EXTRA_WIDGET_ID,
+            AppWidgetManager.INVALID_APPWIDGET_ID
+        )
+        val widgetRepo = if (widgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+            prefsStore.getWidgetRepo(widgetId)
+        } else null
+
+        repoOwner = widgetRepo?.first ?: prefsStore.repoOwner
+        repoName = widgetRepo?.second ?: prefsStore.repoName
+
+        if (repoOwner.isBlank() || repoName.isBlank()) {
             Toast.makeText(this, R.string.error_not_configured, Toast.LENGTH_LONG).show()
             finish()
             return
@@ -43,8 +58,8 @@ class CreateIssueActivity : AppCompatActivity() {
             return
         }
 
-        binding.textRepoHeader.text = prefsStore.repoName
-        binding.textUsernameHeader.text = prefsStore.repoOwner
+        binding.textRepoHeader.text = repoName
+        binding.textUsernameHeader.text = repoOwner
 
         binding.btnCancel.setOnClickListener { finish() }
         binding.btnSubmit.setOnClickListener { submitIssue() }
@@ -64,8 +79,8 @@ class CreateIssueActivity : AppCompatActivity() {
                 val token = "Bearer ${tokenStore.accessToken}"
                 val labels = ApiClient.gitHubApi.listLabels(
                     token = token,
-                    owner = prefsStore.repoOwner,
-                    repo = prefsStore.repoName
+                    owner = repoOwner,
+                    repo = repoName
                 )
                 for (label in labels) {
                     val chip = Chip(this@CreateIssueActivity)
@@ -108,8 +123,8 @@ class CreateIssueActivity : AppCompatActivity() {
                 val token = "Bearer ${tokenStore.accessToken}"
                 ApiClient.gitHubApi.createIssue(
                     token = token,
-                    owner = prefsStore.repoOwner,
-                    repo = prefsStore.repoName,
+                    owner = repoOwner,
+                    repo = repoName,
                     request = CreateIssueRequest(title = title, body = body, labels = selectedLabels)
                 )
                 Toast.makeText(

@@ -58,6 +58,26 @@ class PrefsStore(context: Context) {
             .apply()
     }
 
+    fun setWidgetRepo(widgetId: Int, owner: String, name: String) {
+        prefs.edit()
+            .putString("widget_${widgetId}_repo_owner", owner)
+            .putString("widget_${widgetId}_repo_name", name)
+            .apply()
+    }
+
+    fun getWidgetRepo(widgetId: Int): Pair<String, String>? {
+        val owner = prefs.getString("widget_${widgetId}_repo_owner", null) ?: return null
+        val name = prefs.getString("widget_${widgetId}_repo_name", null) ?: return null
+        return owner to name
+    }
+
+    fun clearWidgetRepo(widgetId: Int) {
+        prefs.edit()
+            .remove("widget_${widgetId}_repo_owner")
+            .remove("widget_${widgetId}_repo_name")
+            .apply()
+    }
+
     companion object {
         private const val DEFAULT_CLIENT_ID = "Ov23liDuXSl6yUoPGfue"
         private const val KEY_CLIENT_ID = "client_id"

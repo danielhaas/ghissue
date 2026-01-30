@@ -28,8 +28,16 @@
             android:excludeFromRecents="true"
             android:theme="@style/Theme.GhIssue.Dialog" />
 
+        <activity
+            android:name=".widget.WidgetConfigActivity"
+            android:exported="false"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.GhIssue.Dialog" />
+
         <receiver
             android:name=".widget.CreateIssueWidgetProvider"
+            android:label="@string/widget_name"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -37,6 +45,18 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/create_issue_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.CreateIssueWidgetProviderWide"
+            android:label="@string/widget_name_wide"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/create_issue_widget_info_wide" />
         </receiver>
 
     </application>
