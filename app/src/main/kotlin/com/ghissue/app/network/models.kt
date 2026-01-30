@@ -66,3 +66,14 @@ data class LabelResponse(
     @Json(name = "name") val name: String,
     @Json(name = "color") val color: String
 )
+
+@JsonClass(generateAdapter = false)
+data class QueuedIssue(
+    @Json(name = "id") val id: String,
+    @Json(name = "owner") val owner: String,
+    @Json(name = "repo") val repo: String,
+    @Json(name = "title") val title: String,
+    @Json(name = "body") val body: String? = null,
+    @Json(name = "labels") val labels: List<String>? = null,
+    @Json(name = "created_at") val createdAt: Long
+)

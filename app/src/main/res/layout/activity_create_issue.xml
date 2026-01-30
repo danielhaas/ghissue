@@ -19,7 +19,15 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:textSize="16sp"
-        android:textColor="?android:attr/textColorSecondary"
+        android:textColor="?android:attr/textColorSecondary" />
+
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/textPendingCount"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="13sp"
+        android:textColor="?attr/colorPrimary"
+        android:visibility="gone"
         android:layout_marginBottom="@dimen/section_spacing" />
 
     <com.google.android.material.textfield.TextInputLayout

@@ -11,6 +11,8 @@ import androidx.lifecycle.lifecycleScope
 import com.ghissue.app.databinding.ActivityCreateIssueBinding
 import com.ghissue.app.network.ApiClient
 import com.ghissue.app.network.CreateIssueRequest
+import com.ghissue.app.network.QueuedIssue
+import com.ghissue.app.storage.IssueQueueManager
 import com.ghissue.app.storage.PrefsStore
 import com.ghissue.app.storage.TokenStore
 import com.ghissue.app.widget.CreateIssueWidgetProvider
@@ -18,12 +20,15 @@ import android.appwidget.AppWidgetManager
 import android.content.res.ColorStateList
 import com.google.android.material.chip.Chip
 import kotlinx.coroutines.launch
+import java.io.IOException
+import java.util.UUID
 
 class CreateIssueActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityCreateIssueBinding
     private lateinit var prefsStore: PrefsStore
     private lateinit var tokenStore: TokenStore
+    private lateinit var issueQueueManager: IssueQueueManager
     private var repoOwner: String = ""
     private var repoName: String = ""
 
@@ -34,6 +39,7 @@ class CreateIssueActivity : AppCompatActivity() {
 
         prefsStore = PrefsStore(this)
         tokenStore = TokenStore(this)
+        issueQueueManager = (application as GhIssueApp).issueQueueManager
 
         val widgetId = intent.getIntExtra(
             CreateIssueWidgetProvider.EXTRA_WIDGET_ID,
@@ -71,6 +77,7 @@ class CreateIssueActivity : AppCompatActivity() {
         }
 
         fetchLabels()
+        drainQueueIfNeeded()
     }
 
     private fun fetchLabels() {
@@ -133,6 +140,24 @@ class CreateIssueActivity : AppCompatActivity() {
                     Toast.LENGTH_SHORT
                 ).show()
                 finish()
+            } catch (e: IOException) {
+                val queued = QueuedIssue(
+                    id = UUID.randomUUID().toString(),
+                    owner = repoOwner,
+                    repo = repoName,
+                    title = title,
+                    body = body,
+                    labels = selectedLabels,
+                    createdAt = System.currentTimeMillis()
+                )
+                issueQueueManager.enqueue(queued)
+                val count = issueQueueManager.count()
+                Toast.makeText(
+                    this@CreateIssueActivity,
+                    getString(R.string.issue_queued, count),
+                    Toast.LENGTH_SHORT
+                ).show()
+                finish()
             } catch (e: Exception) {
                 Toast.makeText(
                     this@CreateIssueActivity,
@@ -141,6 +166,35 @@ class CreateIssueActivity : AppCompatActivity() {
                 ).show()
                 setLoading(false)
             }
+        }
+    }
+
+    private fun drainQueueIfNeeded() {
+        val count = issueQueueManager.count()
+        if (count == 0) return
+        updatePendingCount()
+        lifecycleScope.launch {
+            val result = issueQueueManager.drainQueue(tokenStore)
+            if (result.submitted > 0) {
+                Toast.makeText(
+                    this@CreateIssueActivity,
+                    getString(R.string.queued_issues_submitted, result.submitted),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            updatePendingCount()
+        }
+    }
+
+    private fun updatePendingCount() {
+        val count = issueQueueManager.count()
+        if (count > 0) {
+            binding.textPendingCount.text = resources.getQuantityString(
+                R.plurals.pending_issues, count, count
+            )
+            binding.textPendingCount.visibility = View.VISIBLE
+        } else {
+            binding.textPendingCount.visibility = View.GONE
         }
     }
 

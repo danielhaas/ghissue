@@ -41,6 +41,14 @@
     <string name="oauth_success">Login successful!</string>
     <string name="error_missing_oauth_config">Please set Client ID first</string>
 
+    <!-- Offline Queue -->
+    <string name="issue_queued">Issue queued (%1$d pending)</string>
+    <string name="queued_issues_submitted">%1$d queued issue(s) submitted</string>
+    <plurals name="pending_issues">
+        <item quantity="one">1 issue pending</item>
+        <item quantity="other">%1$d issues pending</item>
+    </plurals>
+
     <!-- Device Flow -->
     <string name="device_flow_title">Login with GitHub</string>
     <string name="device_flow_message">Enter the code %1$s at:\n%2$s</string>
