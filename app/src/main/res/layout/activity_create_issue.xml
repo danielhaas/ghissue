@@ -11,13 +11,14 @@
         android:id="@+id/textRepoHeader"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textAppearance="?attr/textAppearanceDisplaySmall" />
+        android:textSize="32sp"
+        android:textStyle="bold" />
 
     <com.google.android.material.textview.MaterialTextView
         android:id="@+id/textUsernameHeader"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textAppearance="?attr/textAppearanceBodyMedium"
+        android:textSize="16sp"
         android:textColor="?android:attr/textColorSecondary"
         android:layout_marginBottom="@dimen/section_spacing" />
 

@@ -1,5 +1,6 @@
 package com.ghissue.app
 
+import android.graphics.Color
 import android.os.Bundle
 import android.view.View
 import android.widget.Toast
@@ -10,6 +11,7 @@ import com.ghissue.app.network.ApiClient
 import com.ghissue.app.network.CreateIssueRequest
 import com.ghissue.app.storage.PrefsStore
 import com.ghissue.app.storage.TokenStore
+import android.content.res.ColorStateList
 import com.google.android.material.chip.Chip
 import kotlinx.coroutines.launch
 
@@ -61,6 +63,10 @@ class CreateIssueActivity : AppCompatActivity() {
                     val chip = Chip(this@CreateIssueActivity)
                     chip.text = label.name
                     chip.isCheckable = true
+                    val bg = Color.parseColor("#${label.color}")
+                    chip.chipBackgroundColor = ColorStateList.valueOf(bg)
+                    val lum = Color.luminance(bg)
+                    chip.setTextColor(if (lum > 0.5) Color.BLACK else Color.WHITE)
                     binding.chipGroupLabels.addView(chip)
                 }
                 if (labels.isNotEmpty()) {
