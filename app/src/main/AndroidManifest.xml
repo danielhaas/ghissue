@@ -24,6 +24,8 @@
         <activity
             android:name=".CreateIssueActivity"
             android:exported="false"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
             android:theme="@style/Theme.GhIssue.Dialog" />
 
         <receiver

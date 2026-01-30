@@ -38,6 +38,8 @@ class CreateIssueActivity : AppCompatActivity() {
             return
         }
 
+        binding.textRepoHeader.text = "${prefsStore.repoOwner}/${prefsStore.repoName}"
+
         binding.btnCancel.setOnClickListener { finish() }
         binding.btnSubmit.setOnClickListener { submitIssue() }
     }

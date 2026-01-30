@@ -7,10 +7,10 @@
     android:padding="@dimen/activity_margin">
 
     <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/textRepoHeader"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="@string/create_issue_title"
-        android:textAppearance="?attr/textAppearanceHeadlineSmall"
+        android:textAppearance="?attr/textAppearanceHeadlineMedium"
         android:layout_marginBottom="@dimen/section_spacing" />
 
     <com.google.android.material.textfield.TextInputLayout

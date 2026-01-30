@@ -13,6 +13,8 @@
         <item name="colorOnPrimary">@color/md_theme_onPrimary</item>
         <item name="windowMinWidthMajor">85%</item>
         <item name="windowMinWidthMinor">85%</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
     </style>
 
 </resources>
