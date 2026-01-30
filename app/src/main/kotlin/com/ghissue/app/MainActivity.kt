@@ -90,8 +90,10 @@ class MainActivity : AppCompatActivity() {
         val name = prefsStore.repoName
         if (owner.isNotBlank() && name.isNotBlank()) {
             binding.textSelectedRepo.text = "$owner/$name"
+            binding.btnSelectRepo.setText(R.string.btn_change_repo)
         } else {
             binding.textSelectedRepo.setText(R.string.no_repo_selected)
+            binding.btnSelectRepo.setText(R.string.btn_select_repo)
         }
     }
 

@@ -8,6 +8,7 @@
     <string name="settings_title">Settings</string>
     <string name="label_client_id">Client ID</string>
     <string name="btn_select_repo">Select Repository</string>
+    <string name="btn_change_repo">Change Repository</string>
     <string name="no_repo_selected">No repository selected</string>
     <string name="select_repo_title">Select Repository</string>
     <string name="error_loading_repos">Failed to load repositories: %1$s</string>
