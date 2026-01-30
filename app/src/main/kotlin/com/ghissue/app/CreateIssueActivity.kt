@@ -2,7 +2,9 @@ package com.ghissue.app
 
 import android.graphics.Color
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.View
+import android.view.inputmethod.EditorInfo
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -46,6 +48,12 @@ class CreateIssueActivity : AppCompatActivity() {
 
         binding.btnCancel.setOnClickListener { finish() }
         binding.btnSubmit.setOnClickListener { submitIssue() }
+        binding.editIssueTitle.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_SEND) {
+                submitIssue()
+                true
+            } else false
+        }
 
         fetchLabels()
     }
