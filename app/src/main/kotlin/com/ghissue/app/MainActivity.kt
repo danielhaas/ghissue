@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -27,14 +28,20 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tokenStore: TokenStore
     private var pollJob: Job? = null
 
+    companion object {
+        private const val TAG = "GhIssue"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.d(TAG, "onCreate called")
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
         prefsStore = PrefsStore(this)
         tokenStore = TokenStore(this)
 
+        Log.d(TAG, "onCreate: isLoggedIn=${tokenStore.isLoggedIn}, hasPendingFlow=${prefsStore.hasPendingDeviceFlow}")
         loadSettings()
         updateLoginStatus()
 
@@ -46,7 +53,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (pollJob == null && prefsStore.hasPendingDeviceFlow) {
+        val hasPending = prefsStore.hasPendingDeviceFlow
+        Log.d(TAG, "onResume: pollJob=${pollJob}, hasPendingFlow=$hasPending, " +
+            "pendingDeviceCode=${prefsStore.pendingDeviceCode != null}, " +
+            "expiresAt=${prefsStore.pendingExpiresAt}, now=${System.currentTimeMillis()}")
+        if (pollJob == null && hasPending) {
+            Log.d(TAG, "onResume: resuming device code polling")
             startDeviceCodePolling(
                 prefsStore.clientId,
                 prefsStore.pendingDeviceCode!!,
@@ -59,6 +71,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        Log.d(TAG, "onDestroy called, cancelling pollJob")
         pollJob?.cancel()
     }
 
@@ -115,12 +128,15 @@ class MainActivity : AppCompatActivity() {
         }
 
         saveSettings()
+        Log.d(TAG, "startOAuthFlow: requesting device code for clientId=$clientId")
 
         lifecycleScope.launch {
             try {
                 val deviceCode = ApiClient.gitHubOAuthApi.requestDeviceCode(
                     DeviceCodeRequest(clientId = clientId, scope = "repo")
                 )
+                Log.d(TAG, "startOAuthFlow: got userCode=${deviceCode.userCode}, " +
+                    "expiresIn=${deviceCode.expiresIn}, interval=${deviceCode.interval}")
                 prefsStore.pendingDeviceCode = deviceCode.deviceCode
                 prefsStore.pendingUserCode = deviceCode.userCode
                 prefsStore.pendingVerificationUri = deviceCode.verificationUri
@@ -130,6 +146,7 @@ class MainActivity : AppCompatActivity() {
                 startDeviceCodePolling(clientId, deviceCode.deviceCode, deviceCode.userCode,
                     deviceCode.verificationUri, deviceCode.interval)
             } catch (e: Exception) {
+                Log.e(TAG, "startOAuthFlow: failed to request device code", e)
                 Toast.makeText(
                     this@MainActivity,
                     getString(R.string.oauth_error, e.message),
@@ -146,6 +163,7 @@ class MainActivity : AppCompatActivity() {
         verificationUri: String,
         interval: Int
     ) {
+        Log.d(TAG, "startDeviceCodePolling: userCode=$userCode, interval=$interval")
         binding.textDeviceCode.text = userCode
         binding.textDeviceCodeLabel.visibility = View.VISIBLE
         binding.textDeviceCode.visibility = View.VISIBLE
@@ -165,13 +183,18 @@ class MainActivity : AppCompatActivity() {
 
         pollJob = lifecycleScope.launch {
             var currentInterval = interval.toLong()
+            Log.d(TAG, "poll coroutine started, interval=${currentInterval}s")
             while (true) {
                 delay(currentInterval * 1000)
+                Log.d(TAG, "polling for token...")
                 try {
                     val response = ApiClient.gitHubOAuthApi.pollForToken(
                         DeviceTokenRequest(clientId = clientId, deviceCode = deviceCode)
                     )
+                    Log.d(TAG, "poll response: accessToken=${response.accessToken?.take(4)}..., " +
+                        "error=${response.error}, errorDesc=${response.errorDescription}")
                     if (!response.accessToken.isNullOrBlank()) {
+                        Log.d(TAG, "poll: got access token, login successful")
                         tokenStore.accessToken = response.accessToken
                         hideDeviceCodeViews()
                         Toast.makeText(this@MainActivity, R.string.oauth_success, Toast.LENGTH_SHORT).show()
@@ -179,21 +202,33 @@ class MainActivity : AppCompatActivity() {
                         return@launch
                     }
                     when (response.error) {
-                        "authorization_pending" -> { /* keep polling */ }
-                        "slow_down" -> currentInterval += 5
+                        "authorization_pending" -> {
+                            Log.d(TAG, "poll: authorization_pending, continuing")
+                        }
+                        "slow_down" -> {
+                            currentInterval += 5
+                            Log.d(TAG, "poll: slow_down, new interval=${currentInterval}s")
+                        }
                         "expired_token" -> {
+                            Log.w(TAG, "poll: expired_token")
                             hideDeviceCodeViews()
                             Toast.makeText(this@MainActivity, R.string.device_flow_expired, Toast.LENGTH_LONG).show()
                             return@launch
                         }
                         else -> {
-                            hideDeviceCodeViews()
                             val msg = response.errorDescription ?: response.error ?: "Unknown error"
+                            Log.w(TAG, "poll: unexpected error: $msg")
+                            hideDeviceCodeViews()
                             Toast.makeText(this@MainActivity, getString(R.string.oauth_error, msg), Toast.LENGTH_LONG).show()
                             return@launch
                         }
                     }
+                } catch (e: java.io.IOException) {
+                    Log.w(TAG, "poll: transient network error, will retry", e)
+                    // Network errors are transient (e.g. DNS failure while backgrounded),
+                    // keep retrying
                 } catch (e: Exception) {
+                    Log.e(TAG, "poll: fatal exception during polling", e)
                     hideDeviceCodeViews()
                     Toast.makeText(this@MainActivity, getString(R.string.oauth_error, e.message), Toast.LENGTH_LONG).show()
                     return@launch
@@ -203,6 +238,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun hideDeviceCodeViews() {
+        Log.d(TAG, "hideDeviceCodeViews: clearing pending flow")
         prefsStore.clearPendingDeviceFlow()
         pollJob = null
         binding.textDeviceCodeLabel.visibility = View.GONE
