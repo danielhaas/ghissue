@@ -1,0 +1,7 @@
+{
+  "uuid": "ghissue@ghissue.github.com",
+  "name": "ghissue",
+  "description": "Single-click button to create a GitHub issue via the ghissue daemon",
+  "shell-version": ["48"],
+  "url": "https://github.com/ghissue/ghissue"
+}

@@ -1,5 +1,6 @@
-"""Entry point: system tray icon and GLib main loop."""
+"""Entry point: system tray icon, DBus service, and GLib main loop."""
 
+import argparse
 import os
 import signal
 import sys
@@ -11,7 +12,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("AppIndicator3", "0.1")
 gi.require_version("Notify", "0.7")
 
-from gi.repository import AppIndicator3, GLib, Gtk, Notify
+from gi.repository import AppIndicator3, Gio, GLib, Gtk, Notify
 
 from . import config
 from .api import GitHubAPI
@@ -24,6 +25,15 @@ _ICON_PATH = os.path.join(
     "resources", "ghissue-icon.svg",
 )
 _APP_ID = "com.github.ghissue"
+_DBUS_PATH = "/com/github/ghissue"
+
+_DBUS_XML = """
+<node>
+  <interface name="com.github.ghissue">
+    <method name="CreateIssue"/>
+  </interface>
+</node>
+"""
 
 
 def run_in_background(func, callback=None):
@@ -60,6 +70,35 @@ class Application:
         # Drain queue on startup if non-empty
         if self.queue.count() > 0:
             self._try_drain()
+
+        # Register DBus service
+        self._dbus_owner_id = Gio.bus_own_name(
+            Gio.BusType.SESSION,
+            _APP_ID,
+            Gio.BusNameOwnerFlags.NONE,
+            self._on_bus_acquired,
+            None,
+            None,
+        )
+
+    # ── DBus ──
+
+    def _on_bus_acquired(self, connection, name):
+        introspection = Gio.DBusNodeInfo.new_for_xml(_DBUS_XML)
+        connection.register_object(
+            _DBUS_PATH,
+            introspection.interfaces[0],
+            self._on_dbus_method_call,
+            None,
+            None,
+        )
+
+    def _on_dbus_method_call(self, connection, sender, object_path,
+                             interface_name, method_name, parameters,
+                             invocation):
+        if method_name == "CreateIssue":
+            GLib.idle_add(self._on_create_issue, None)
+            invocation.return_value(None)
 
     # ── Menu ──
 
@@ -105,7 +144,7 @@ class Application:
             self.queue_item.hide()
 
     def refresh(self):
-        """Reload config and refresh menu state (safe from any thread via idle_add)."""
+        """Reload config and refresh menu state."""
         self.cfg = config.load()
         self._refresh_menu_state()
 
@@ -126,6 +165,8 @@ class Application:
         self.refresh()
 
     def _on_quit(self, _widget):
+        if self._dbus_owner_id:
+            Gio.bus_unown_name(self._dbus_owner_id)
         Notify.uninit()
         Gtk.main_quit()
 
@@ -168,7 +209,39 @@ class Application:
         Gtk.main()
 
 
+def _send_create_issue():
+    """Send CreateIssue DBus call to the running daemon and exit."""
+    try:
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        bus.call_sync(
+            _APP_ID,
+            _DBUS_PATH,
+            _APP_ID,
+            "CreateIssue",
+            None,
+            None,
+            Gio.DBusCallFlags.NONE,
+            5000,
+            None,
+        )
+    except GLib.Error as e:
+        print(f"ghissue: could not reach daemon: {e.message}", file=sys.stderr)
+        sys.exit(1)
+
+
 def main():
+    parser = argparse.ArgumentParser(description="ghissue — quick GitHub issue creator")
+    parser.add_argument(
+        "--create",
+        action="store_true",
+        help="Open the Create Issue dialog on the running daemon and exit",
+    )
+    args = parser.parse_args()
+
+    if args.create:
+        _send_create_issue()
+        return
+
     app = Application()
     app.run()
 
