@@ -104,11 +104,57 @@ class WidgetConfigActivity : AppCompatActivity() {
                 val colorInt = ContextCompat.getColor(this, colorRes)
                 prefsStore.setWidgetColor(appWidgetId, colorInt)
                 dialog.dismiss()
-                finalizeWidget()
+                showDefaultLabelsPicker(prefsStore)
             }
         }
 
         dialog.show()
+    }
+
+    private fun showDefaultLabelsPicker(prefsStore: PrefsStore) {
+        val widgetRepo = prefsStore.getWidgetRepo(appWidgetId)
+        if (widgetRepo == null) {
+            finalizeWidget()
+            return
+        }
+        val tokenStore = TokenStore(this)
+        val token = tokenStore.accessToken
+        if (token == null) {
+            finalizeWidget()
+            return
+        }
+        lifecycleScope.launch {
+            try {
+                val labels = ApiClient.gitHubApi.listLabels(
+                    token = "Bearer $token",
+                    owner = widgetRepo.first,
+                    repo = widgetRepo.second
+                )
+                if (labels.isEmpty()) {
+                    finalizeWidget()
+                    return@launch
+                }
+                val labelNames = labels.map { it.name }.toTypedArray()
+                val currentDefaults = prefsStore.defaultLabels
+                val checked = BooleanArray(labelNames.size) { labelNames[it] in currentDefaults }
+                MaterialAlertDialogBuilder(this@WidgetConfigActivity)
+                    .setTitle(R.string.btn_select_default_labels)
+                    .setMultiChoiceItems(labelNames, checked) { _, which, isChecked ->
+                        checked[which] = isChecked
+                    }
+                    .setPositiveButton(android.R.string.ok) { _, _ ->
+                        prefsStore.defaultLabels = labelNames.filterIndexed { i, _ -> checked[i] }.toSet()
+                        finalizeWidget()
+                    }
+                    .setNegativeButton(R.string.btn_skip) { _, _ ->
+                        finalizeWidget()
+                    }
+                    .setOnCancelListener { finalizeWidget() }
+                    .show()
+            } catch (_: Exception) {
+                finalizeWidget()
+            }
+        }
     }
 
     private fun finalizeWidget() {

@@ -67,6 +67,7 @@
     <string name="no_default_labels">None</string>
     <string name="error_select_repo_first">Please select a repository first</string>
     <string name="error_loading_labels">Failed to load labels: %1$s</string>
+    <string name="btn_skip">Skip</string>
 
     <!-- Widget Color Picker -->
     <string name="pick_widget_color_title">Pick widget color</string>
