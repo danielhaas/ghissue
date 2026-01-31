@@ -1,4 +1,4 @@
-"""Entry point: system tray icon, DBus service, and GLib main loop."""
+"""Entry point: DBus service daemon and GLib main loop."""
 
 import argparse
 import os
@@ -9,10 +9,9 @@ import threading
 import gi
 
 gi.require_version("Gtk", "3.0")
-gi.require_version("AppIndicator3", "0.1")
 gi.require_version("Notify", "0.7")
 
-from gi.repository import AppIndicator3, Gio, GLib, Gtk, Notify
+from gi.repository import Gio, GLib, Gtk, Notify
 
 from . import config
 from .api import GitHubAPI
@@ -20,10 +19,6 @@ from .keyring import get_token, is_logged_in
 from .network import NetworkMonitor
 from .queue import IssueQueue
 
-_ICON_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "resources", "ghissue-icon.svg",
-)
 _APP_ID = "com.github.ghissue"
 _DBUS_PATH = "/com/github/ghissue"
 
@@ -31,6 +26,11 @@ _DBUS_XML = """
 <node>
   <interface name="com.github.ghissue">
     <method name="CreateIssue"/>
+    <method name="OpenSettings"/>
+    <method name="GetQueueCount">
+      <arg type="i" name="count" direction="out"/>
+    </method>
+    <method name="Quit"/>
   </interface>
 </node>
 """
@@ -53,16 +53,6 @@ class Application:
         self.api = GitHubAPI()
         self.queue = IssueQueue()
         self.cfg = config.load()
-
-        # Build tray icon
-        self.indicator = AppIndicator3.Indicator.new(
-            _APP_ID,
-            _ICON_PATH,
-            AppIndicator3.IndicatorCategory.APPLICATION_STATUS,
-        )
-        self.indicator.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
-
-        self._build_menu()
 
         # Network monitor — drain queue when connectivity returns
         self.net = NetworkMonitor(on_network_available=self._on_network_up)
@@ -99,72 +89,40 @@ class Application:
         if method_name == "CreateIssue":
             GLib.idle_add(self._on_create_issue, None)
             invocation.return_value(None)
-
-    # ── Menu ──
-
-    def _build_menu(self):
-        menu = Gtk.Menu()
-
-        self.create_item = Gtk.MenuItem(label="Create Issue...")
-        self.create_item.connect("activate", self._on_create_issue)
-        menu.append(self.create_item)
-
-        menu.append(Gtk.SeparatorMenuItem())
-
-        settings_item = Gtk.MenuItem(label="Settings...")
-        settings_item.connect("activate", self._on_settings)
-        menu.append(settings_item)
-
-        menu.append(Gtk.SeparatorMenuItem())
-
-        self.queue_item = Gtk.MenuItem(label="Queue: 0 pending")
-        self.queue_item.set_sensitive(False)
-        menu.append(self.queue_item)
-
-        menu.append(Gtk.SeparatorMenuItem())
-
-        quit_item = Gtk.MenuItem(label="Quit")
-        quit_item.connect("activate", self._on_quit)
-        menu.append(quit_item)
-
-        menu.show_all()
-        self._refresh_menu_state()
-        self.indicator.set_menu(menu)
-
-    def _refresh_menu_state(self):
-        logged_in = is_logged_in()
-        repo = config.get_repo(self.cfg)
-        self.create_item.set_sensitive(logged_in and repo is not None)
-
-        n = self.queue.count()
-        if n > 0:
-            self.queue_item.set_label(f"Queue: {n} pending")
-            self.queue_item.show()
+        elif method_name == "OpenSettings":
+            GLib.idle_add(self._on_settings, None)
+            invocation.return_value(None)
+        elif method_name == "GetQueueCount":
+            n = self.queue.count()
+            invocation.return_value(GLib.Variant("(i)", (n,)))
+        elif method_name == "Quit":
+            invocation.return_value(None)
+            GLib.idle_add(self._on_quit)
         else:
-            self.queue_item.hide()
-
-    def refresh(self):
-        """Reload config and refresh menu state."""
-        self.cfg = config.load()
-        self._refresh_menu_state()
+            invocation.return_dbus_error(
+                "org.freedesktop.DBus.Error.UnknownMethod",
+                f"No such method: {method_name}",
+            )
 
     # ── Actions ──
 
     def _on_create_issue(self, _widget):
+        if not (is_logged_in() and config.get_repo(self.cfg)):
+            self._notify("ghissue", "Please configure a repository in Settings first.")
+            return
         from .dialogs.create_issue import CreateIssueDialog
         dlg = CreateIssueDialog(self)
         dlg.run()
         dlg.destroy()
-        self._refresh_menu_state()
 
     def _on_settings(self, _widget):
         from .dialogs.settings import SettingsDialog
         dlg = SettingsDialog(self)
         dlg.run()
         dlg.destroy()
-        self.refresh()
+        self.cfg = config.load()
 
-    def _on_quit(self, _widget):
+    def _on_quit(self):
         if self._dbus_owner_id:
             Gio.bus_unown_name(self._dbus_owner_id)
         Notify.uninit()
@@ -190,7 +148,6 @@ class Application:
                     "Issues submitted",
                     f"{result.submitted} queued issue(s) submitted.",
                 )
-            self._refresh_menu_state()
 
         run_in_background(_drain, _on_drained)
 
@@ -204,20 +161,19 @@ class Application:
     # ── Main loop ──
 
     def run(self):
-        # Allow Ctrl+C to exit
         signal.signal(signal.SIGINT, signal.SIG_DFL)
         Gtk.main()
 
 
-def _send_create_issue():
-    """Send CreateIssue DBus call to the running daemon and exit."""
+def _send_dbus_call(method):
+    """Send a no-arg DBus call to the running daemon and exit."""
     try:
         bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
         bus.call_sync(
             _APP_ID,
             _DBUS_PATH,
             _APP_ID,
-            "CreateIssue",
+            method,
             None,
             None,
             Gio.DBusCallFlags.NONE,
@@ -239,7 +195,7 @@ def main():
     args = parser.parse_args()
 
     if args.create:
-        _send_create_issue()
+        _send_dbus_call("CreateIssue")
         return
 
     app = Application()
