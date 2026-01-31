@@ -79,6 +79,7 @@ class CreateIssueDialog(Gtk.Dialog):
         box.add(Gtk.Label(label="Title:", xalign=0))
         self._title_entry = Gtk.Entry()
         self._title_entry.set_placeholder_text("Issue title")
+        self._title_entry.connect("key-press-event", self._on_key_press)
         box.add(self._title_entry)
 
         # Body
@@ -88,6 +89,7 @@ class CreateIssueDialog(Gtk.Dialog):
         scroll.set_min_content_height(120)
         self._body_view = Gtk.TextView()
         self._body_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        self._body_view.connect("key-press-event", self._on_key_press)
         scroll.add(self._body_view)
         box.add(scroll)
 
@@ -182,6 +184,13 @@ class CreateIssueDialog(Gtk.Dialog):
             self._labels_flow.add(btn)
 
         self._labels_flow.show_all()
+
+    def _on_key_press(self, widget, event):
+        if (event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter)
+                and event.state & Gdk.ModifierType.CONTROL_MASK):
+            self.response(Gtk.ResponseType.OK)
+            return True
+        return False
 
     def _get_selected_labels(self) -> list[str]:
         return [
