@@ -71,14 +71,26 @@ class PrefsStore(context: Context) {
         return owner to name
     }
 
+    fun setWidgetColor(widgetId: Int, colorInt: Int) {
+        prefs.edit()
+            .putInt("widget_${widgetId}_color", colorInt)
+            .apply()
+    }
+
+    fun getWidgetColor(widgetId: Int): Int {
+        return prefs.getInt("widget_${widgetId}_color", DEFAULT_WIDGET_COLOR)
+    }
+
     fun clearWidgetRepo(widgetId: Int) {
         prefs.edit()
             .remove("widget_${widgetId}_repo_owner")
             .remove("widget_${widgetId}_repo_name")
+            .remove("widget_${widgetId}_color")
             .apply()
     }
 
     companion object {
+        const val DEFAULT_WIDGET_COLOR = 0xFF6750A4.toInt()
         private const val DEFAULT_CLIENT_ID = "Ov23liDuXSl6yUoPGfue"
         private const val KEY_CLIENT_ID = "client_id"
         private const val KEY_REPO_OWNER = "repo_owner"

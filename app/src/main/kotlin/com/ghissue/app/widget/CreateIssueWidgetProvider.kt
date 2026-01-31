@@ -55,9 +55,11 @@ open class CreateIssueWidgetProvider : AppWidgetProvider() {
                 ?: prefsStore.repoName.ifBlank { null }
                 ?: ""
 
+            val color = prefsStore.getWidgetColor(widgetId)
             val views = RemoteViews(context.packageName, R.layout.widget_create_issue).apply {
                 setOnClickPendingIntent(R.id.widgetButton, pendingIntent)
                 setTextViewText(R.id.widgetRepoLabel, repoLabel)
+                setInt(R.id.widgetBg, "setColorFilter", color)
             }
 
             appWidgetManager.updateAppWidget(widgetId, views)

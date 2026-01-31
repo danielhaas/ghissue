@@ -3,8 +3,10 @@ package com.ghissue.app.widget
 import android.appwidget.AppWidgetManager
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.ghissue.app.R
 import com.ghissue.app.network.ApiClient
@@ -61,20 +63,7 @@ class WidgetConfigActivity : AppCompatActivity() {
                         val selected = repos[which]
                         val prefsStore = PrefsStore(this@WidgetConfigActivity)
                         prefsStore.setWidgetRepo(appWidgetId, selected.owner.login, selected.name)
-
-                        val appWidgetManager = AppWidgetManager.getInstance(this@WidgetConfigActivity)
-                        CreateIssueWidgetProvider.updateWidget(
-                            this@WidgetConfigActivity,
-                            appWidgetManager,
-                            appWidgetId
-                        )
-
-                        val resultValue = Intent().putExtra(
-                            AppWidgetManager.EXTRA_APPWIDGET_ID,
-                            appWidgetId
-                        )
-                        setResult(RESULT_OK, resultValue)
-                        finish()
+                        showColorPicker(prefsStore)
                     }
                     .setOnCancelListener { finish() }
                     .show()
@@ -87,5 +76,49 @@ class WidgetConfigActivity : AppCompatActivity() {
                 finish()
             }
         }
+    }
+
+    private fun showColorPicker(prefsStore: PrefsStore) {
+        val colorOptions = listOf(
+            R.id.colorPurple to R.color.widget_color_purple,
+            R.id.colorBlue to R.color.widget_color_blue,
+            R.id.colorTeal to R.color.widget_color_teal,
+            R.id.colorGreen to R.color.widget_color_green,
+            R.id.colorOrange to R.color.widget_color_orange,
+            R.id.colorRed to R.color.widget_color_red,
+            R.id.colorPink to R.color.widget_color_pink,
+            R.id.colorIndigo to R.color.widget_color_indigo,
+        )
+
+        val pickerView = layoutInflater.inflate(R.layout.widget_color_picker, null)
+
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.pick_widget_color_title)
+            .setView(pickerView)
+            .setOnCancelListener { finish() }
+            .create()
+
+        for ((viewId, colorRes) in colorOptions) {
+            pickerView.findViewById<View>(viewId).setOnClickListener {
+                val colorInt = ContextCompat.getColor(this, colorRes)
+                prefsStore.setWidgetColor(appWidgetId, colorInt)
+                dialog.dismiss()
+                finalizeWidget()
+            }
+        }
+
+        dialog.show()
+    }
+
+    private fun finalizeWidget() {
+        val appWidgetManager = AppWidgetManager.getInstance(this)
+        CreateIssueWidgetProvider.updateWidget(this, appWidgetManager, appWidgetId)
+
+        val resultValue = Intent().putExtra(
+            AppWidgetManager.EXTRA_APPWIDGET_ID,
+            appWidgetId
+        )
+        setResult(RESULT_OK, resultValue)
+        finish()
     }
 }

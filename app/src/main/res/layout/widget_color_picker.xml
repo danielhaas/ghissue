@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<GridLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/colorGrid"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:columnCount="4"
+    android:padding="16dp"
+    android:useDefaultMargins="true"
+    android:alignmentMode="alignBounds">
+
+    <!-- Row 1 -->
+    <ImageView
+        android:id="@+id/colorPurple"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_columnWeight="1"
+        android:layout_gravity="center"
+        android:background="@drawable/widget_background"
+        android:backgroundTint="@color/widget_color_purple"
+        android:contentDescription="Purple" />
+
+    <ImageView
+        android:id="@+id/colorBlue"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_columnWeight="1"
+        android:layout_gravity="center"
+        android:background="@drawable/widget_background"
+        android:backgroundTint="@color/widget_color_blue"
+        android:contentDescription="Blue" />
+
+    <ImageView
+        android:id="@+id/colorTeal"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_columnWeight="1"
+        android:layout_gravity="center"
+        android:background="@drawable/widget_background"
+        android:backgroundTint="@color/widget_color_teal"
+        android:contentDescription="Teal" />
+
+    <ImageView
+        android:id="@+id/colorGreen"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_columnWeight="1"
+        android:layout_gravity="center"
+        android:background="@drawable/widget_background"
+        android:backgroundTint="@color/widget_color_green"
+        android:contentDescription="Green" />
+
+    <!-- Row 2 -->
+    <ImageView
+        android:id="@+id/colorOrange"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_columnWeight="1"
+        android:layout_gravity="center"
+        android:background="@drawable/widget_background"
+        android:backgroundTint="@color/widget_color_orange"
+        android:contentDescription="Orange" />
+
+    <ImageView
+        android:id="@+id/colorRed"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_columnWeight="1"
+        android:layout_gravity="center"
+        android:background="@drawable/widget_background"
+        android:backgroundTint="@color/widget_color_red"
+        android:contentDescription="Red" />
+
+    <ImageView
+        android:id="@+id/colorPink"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_columnWeight="1"
+        android:layout_gravity="center"
+        android:background="@drawable/widget_background"
+        android:backgroundTint="@color/widget_color_pink"
+        android:contentDescription="Pink" />
+
+    <ImageView
+        android:id="@+id/colorIndigo"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_columnWeight="1"
+        android:layout_gravity="center"
+        android:background="@drawable/widget_background"
+        android:backgroundTint="@color/widget_color_indigo"
+        android:contentDescription="Indigo" />
+
+</GridLayout>

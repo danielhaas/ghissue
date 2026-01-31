@@ -59,4 +59,7 @@
     <string name="device_flow_waiting">Waiting for authorization…</string>
     <string name="device_flow_open_browser">Open Browser</string>
     <string name="device_flow_expired">Login session expired. Please try again.</string>
+
+    <!-- Widget Color Picker -->
+    <string name="pick_widget_color_title">Pick widget color</string>
 </resources>

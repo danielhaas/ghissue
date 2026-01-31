@@ -6,4 +6,14 @@
     <color name="md_theme_secondary">#FF625B71</color>
     <color name="widget_background">#FF6750A4</color>
     <color name="widget_icon">#FFFFFFFF</color>
+
+    <!-- Widget color palette -->
+    <color name="widget_color_purple">#FF6750A4</color>
+    <color name="widget_color_blue">#FF1976D2</color>
+    <color name="widget_color_teal">#FF00897B</color>
+    <color name="widget_color_green">#FF388E3C</color>
+    <color name="widget_color_orange">#FFF57C00</color>
+    <color name="widget_color_red">#FFD32F2F</color>
+    <color name="widget_color_pink">#FFC2185B</color>
+    <color name="widget_color_indigo">#FF303F9F</color>
 </resources>
