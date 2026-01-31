@@ -10,4 +10,5 @@
     android:widgetCategory="home_screen"
     android:description="@string/widget_description"
     android:previewLayout="@layout/widget_create_issue"
-    android:configure="com.ghissue.app.widget.WidgetConfigActivity" />
+    android:configure="com.ghissue.app.widget.WidgetConfigActivity"
+    android:widgetFeatures="reconfigurable" />

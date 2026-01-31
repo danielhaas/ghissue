@@ -8,6 +8,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.ghissue.app.MainActivity
 import com.ghissue.app.R
 import com.ghissue.app.network.ApiClient
 import com.ghissue.app.storage.PrefsStore
@@ -36,7 +37,7 @@ class WidgetConfigActivity : AppCompatActivity() {
 
         val tokenStore = TokenStore(this)
         if (!tokenStore.isLoggedIn) {
-            Toast.makeText(this, R.string.error_not_logged_in, Toast.LENGTH_LONG).show()
+            startActivity(Intent(this, MainActivity::class.java))
             finish()
             return
         }
