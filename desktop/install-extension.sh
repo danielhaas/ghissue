@@ -2,7 +2,7 @@
 # Install (or update) the ghissue GNOME Shell extension.
 set -euo pipefail
 
-UUID="ghissue@ghissue.github.com"
+UUID="ghissue@njoerd.com"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SRC_DIR="${SCRIPT_DIR}/gnome-extension"
 DEST_DIR="${HOME}/.local/share/gnome-shell/extensions/${UUID}"
