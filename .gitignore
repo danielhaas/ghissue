@@ -5,3 +5,16 @@
 /build/
 /app/build/
 __pycache__/
+
+# iOS / Xcode
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+xcuserdata/
+DerivedData/
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+.build/
