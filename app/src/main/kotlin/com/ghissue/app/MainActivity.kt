@@ -49,6 +49,7 @@ class MainActivity : AppCompatActivity() {
         binding.btnLogin.setOnClickListener { startOAuthFlow() }
         binding.btnLogout.setOnClickListener { logout() }
         binding.btnSelectRepo.setOnClickListener { selectRepo() }
+        binding.btnSelectDefaultLabels.setOnClickListener { selectDefaultLabels() }
     }
 
     override fun onResume() {
@@ -78,6 +79,7 @@ class MainActivity : AppCompatActivity() {
     private fun loadSettings() {
         binding.editClientId.setText(prefsStore.clientId)
         updateSelectedRepoLabel()
+        updateDefaultLabelsDisplay()
     }
 
     private fun saveSettings() {
@@ -109,7 +111,9 @@ class MainActivity : AppCompatActivity() {
                         val selected = repos[which]
                         prefsStore.repoOwner = selected.owner.login
                         prefsStore.repoName = selected.name
+                        prefsStore.defaultLabels = emptySet()
                         updateSelectedRepoLabel()
+                        updateDefaultLabelsDisplay()
                     }
                     .show()
             } catch (e: Exception) {
@@ -119,6 +123,53 @@ class MainActivity : AppCompatActivity() {
                     Toast.LENGTH_LONG
                 ).show()
             }
+        }
+    }
+
+    private fun selectDefaultLabels() {
+        if (prefsStore.repoOwner.isBlank() || prefsStore.repoName.isBlank()) {
+            Toast.makeText(this, R.string.error_select_repo_first, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val token = tokenStore.accessToken ?: return
+        lifecycleScope.launch {
+            try {
+                val labels = ApiClient.gitHubApi.listLabels(
+                    token = "Bearer $token",
+                    owner = prefsStore.repoOwner,
+                    repo = prefsStore.repoName
+                )
+                val labelNames = labels.map { it.name }.toTypedArray()
+                val currentDefaults = prefsStore.defaultLabels
+                val checked = BooleanArray(labelNames.size) { labelNames[it] in currentDefaults }
+                MaterialAlertDialogBuilder(this@MainActivity)
+                    .setTitle(R.string.btn_select_default_labels)
+                    .setMultiChoiceItems(labelNames, checked) { _, which, isChecked ->
+                        checked[which] = isChecked
+                    }
+                    .setPositiveButton(android.R.string.ok) { _, _ ->
+                        val selected = labelNames.filterIndexed { i, _ -> checked[i] }.toSet()
+                        prefsStore.defaultLabels = selected
+                        updateDefaultLabelsDisplay()
+                    }
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show()
+            } catch (e: Exception) {
+                Toast.makeText(
+                    this@MainActivity,
+                    getString(R.string.error_loading_labels, e.message),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    private fun updateDefaultLabelsDisplay() {
+        val labels = prefsStore.defaultLabels
+        binding.textDefaultLabels.text = if (labels.isEmpty()) {
+            getString(R.string.no_default_labels)
+        } else {
+            labels.sorted().joinToString(", ")
         }
     }
 

@@ -149,6 +149,29 @@
                 android:text="@string/btn_select_repo"
                 android:layout_marginBottom="@dimen/field_spacing" />
 
+            <com.google.android.material.textview.MaterialTextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/default_labels_section"
+                android:textAppearance="?attr/textAppearanceTitleMedium"
+                android:layout_marginTop="@dimen/field_spacing"
+                android:layout_marginBottom="@dimen/field_spacing" />
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/textDefaultLabels"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/no_default_labels"
+                android:textAppearance="?attr/textAppearanceBodyLarge"
+                android:layout_marginBottom="@dimen/field_spacing" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSelectDefaultLabels"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/btn_select_default_labels"
+                android:layout_marginBottom="@dimen/field_spacing" />
+
         </LinearLayout>
 
     </LinearLayout>

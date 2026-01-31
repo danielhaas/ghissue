@@ -25,12 +25,19 @@ import java.util.UUID
 
 class CreateIssueActivity : AppCompatActivity() {
 
+    companion object {
+        private const val KEY_TITLE = "issue_title"
+        private const val KEY_BODY = "issue_body"
+        private const val KEY_SELECTED_LABELS = "selected_labels"
+    }
+
     private lateinit var binding: ActivityCreateIssueBinding
     private lateinit var prefsStore: PrefsStore
     private lateinit var tokenStore: TokenStore
     private lateinit var issueQueueManager: IssueQueueManager
     private var repoOwner: String = ""
     private var repoName: String = ""
+    private var pendingSelectedLabels: List<String>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -69,6 +76,14 @@ class CreateIssueActivity : AppCompatActivity() {
 
         binding.btnCancel.setOnClickListener { finish() }
         binding.btnSubmit.setOnClickListener { submitIssue() }
+        binding.btnSendBody.setOnClickListener { submitIssue() }
+        binding.btnReset.setOnClickListener { resetForm() }
+
+        if (savedInstanceState != null) {
+            binding.editIssueTitle.setText(savedInstanceState.getString(KEY_TITLE, ""))
+            binding.editIssueBody.setText(savedInstanceState.getString(KEY_BODY, ""))
+            pendingSelectedLabels = savedInstanceState.getStringArrayList(KEY_SELECTED_LABELS)
+        }
         binding.editIssueTitle.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEND) {
                 submitIssue()
@@ -101,6 +116,21 @@ class CreateIssueActivity : AppCompatActivity() {
                 }
                 if (labels.isNotEmpty()) {
                     binding.chipGroupLabels.visibility = View.VISIBLE
+                }
+                if (pendingSelectedLabels != null) {
+                    for (i in 0 until binding.chipGroupLabels.childCount) {
+                        val chip = binding.chipGroupLabels.getChildAt(i) as Chip
+                        chip.isChecked = chip.text.toString() in pendingSelectedLabels!!
+                    }
+                    pendingSelectedLabels = null
+                } else {
+                    val defaults = prefsStore.defaultLabels
+                    if (defaults.isNotEmpty()) {
+                        for (i in 0 until binding.chipGroupLabels.childCount) {
+                            val chip = binding.chipGroupLabels.getChildAt(i) as Chip
+                            chip.isChecked = chip.text.toString() in defaults
+                        }
+                    }
                 }
             } catch (_: Exception) {
                 // Silently skip if label fetch fails
@@ -198,9 +228,31 @@ class CreateIssueActivity : AppCompatActivity() {
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString(KEY_TITLE, binding.editIssueTitle.text.toString())
+        outState.putString(KEY_BODY, binding.editIssueBody.text.toString())
+        val selected = (0 until binding.chipGroupLabels.childCount)
+            .map { binding.chipGroupLabels.getChildAt(it) as Chip }
+            .filter { it.isChecked }
+            .map { it.text.toString() }
+        outState.putStringArrayList(KEY_SELECTED_LABELS, ArrayList(selected))
+    }
+
+    private fun resetForm() {
+        binding.editIssueTitle.text?.clear()
+        binding.editIssueBody.text?.clear()
+        for (i in 0 until binding.chipGroupLabels.childCount) {
+            (binding.chipGroupLabels.getChildAt(i) as Chip).isChecked = false
+        }
+        binding.editIssueTitle.requestFocus()
+    }
+
     private fun setLoading(loading: Boolean) {
         binding.progressBar.visibility = if (loading) View.VISIBLE else View.GONE
         binding.btnSubmit.isEnabled = !loading
+        binding.btnSendBody.isEnabled = !loading
+        binding.btnReset.isEnabled = !loading
         binding.btnCancel.isEnabled = !loading
         binding.editIssueTitle.isEnabled = !loading
         binding.editIssueBody.isEnabled = !loading

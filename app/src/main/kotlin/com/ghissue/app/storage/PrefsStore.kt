@@ -81,6 +81,10 @@ class PrefsStore(context: Context) {
         return prefs.getInt("widget_${widgetId}_color", DEFAULT_WIDGET_COLOR)
     }
 
+    var defaultLabels: Set<String>
+        get() = prefs.getStringSet(KEY_DEFAULT_LABELS, emptySet()) ?: emptySet()
+        set(value) = prefs.edit().putStringSet(KEY_DEFAULT_LABELS, value).apply()
+
     fun clearWidgetRepo(widgetId: Int) {
         prefs.edit()
             .remove("widget_${widgetId}_repo_owner")
@@ -100,5 +104,6 @@ class PrefsStore(context: Context) {
         private const val KEY_PENDING_VERIFICATION_URI = "pending_verification_uri"
         private const val KEY_PENDING_INTERVAL = "pending_interval"
         private const val KEY_PENDING_EXPIRES_AT = "pending_expires_at"
+        private const val KEY_DEFAULT_LABELS = "default_labels"
     }
 }

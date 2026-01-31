@@ -29,6 +29,7 @@
     <string name="hint_issue_title">Title</string>
     <string name="hint_issue_body">Body (optional)</string>
     <string name="btn_submit">Submit</string>
+    <string name="btn_reset">Reset</string>
     <string name="btn_cancel">Cancel</string>
     <string name="issue_created">Issue created!</string>
     <string name="error_title_required">Title is required</string>
@@ -59,6 +60,13 @@
     <string name="device_flow_waiting">Waiting for authorization…</string>
     <string name="device_flow_open_browser">Open Browser</string>
     <string name="device_flow_expired">Login session expired. Please try again.</string>
+
+    <!-- Default Labels -->
+    <string name="default_labels_section">Default Labels</string>
+    <string name="btn_select_default_labels">Select Default Labels</string>
+    <string name="no_default_labels">None</string>
+    <string name="error_select_repo_first">Please select a repository first</string>
+    <string name="error_loading_labels">Failed to load labels: %1$s</string>
 
     <!-- Widget Color Picker -->
     <string name="pick_widget_color_title">Pick widget color</string>
