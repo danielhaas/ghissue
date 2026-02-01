@@ -35,9 +35,10 @@ jobs:
           mkdir -p staging
           cp desktop/gnome-extension/extension.js staging/
           cp desktop/gnome-extension/metadata.json staging/
+          cp desktop/gnome-extension/INSTALL.md staging/
           cp desktop/resources/ghissue-icon.svg staging/
           cd staging
-          zip ../ghissue@njoerd.com.zip extension.js metadata.json ghissue-icon.svg
+          zip ../ghissue@njoerd.com.zip extension.js metadata.json INSTALL.md ghissue-icon.svg
 
       - uses: actions/upload-artifact@v4
         with:
