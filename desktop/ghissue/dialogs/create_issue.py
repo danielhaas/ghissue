@@ -41,7 +41,7 @@ def _label_css(color_hex: str) -> str:
 
 
 class CreateIssueDialog(Gtk.Dialog):
-    def __init__(self, app):
+    def __init__(self, app, owner: str, repo: str):
         super().__init__(
             title="Create Issue",
             transient_for=None,
@@ -49,9 +49,17 @@ class CreateIssueDialog(Gtk.Dialog):
         )
         self.set_default_size(520, 480)
         self._app = app
-        self._cfg = config.load()
+        self._owner = owner
+        self._repo = repo
         self._labels: list[Label] = []
         self._label_buttons: list[tuple[Gtk.ToggleButton, Label]] = []
+
+        # Look up default labels from config
+        cfg = config.load()
+        repo_cfg = config.find_repo(cfg, owner, repo)
+        self._default_labels = set(
+            repo_cfg.get("default_labels", []) if repo_cfg else []
+        )
 
         box = self.get_content_area()
         box.set_spacing(8)
@@ -61,19 +69,15 @@ class CreateIssueDialog(Gtk.Dialog):
         box.set_margin_bottom(12)
 
         # Header: repo info + queue count
-        repo = config.get_repo(self._cfg)
-        header_parts = []
-        if repo:
-            header_parts.append(f"{repo[0]}/{repo[1]}")
+        header_parts = [f"{owner}/{repo}"]
         n = self._app.queue.count()
         if n > 0:
             header_parts.append(f"({n} pending)")
-        if header_parts:
-            header = Gtk.Label(xalign=0)
-            header.set_markup(
-                f'<span size="small" foreground="gray">{" — ".join(header_parts)}</span>'
-            )
-            box.add(header)
+        header = Gtk.Label(xalign=0)
+        header.set_markup(
+            f'<span size="small" foreground="gray">{" — ".join(header_parts)}</span>'
+        )
+        box.add(header)
 
         # Title
         box.add(Gtk.Label(label="Title:", xalign=0))
@@ -121,18 +125,15 @@ class CreateIssueDialog(Gtk.Dialog):
 
     def _fetch_labels(self):
         token = get_token()
-        repo = config.get_repo(self._cfg)
-        if not token or not repo:
+        if not token:
             self._labels_header.hide()
             return
 
         self._labels_spinner.show()
         self._labels_spinner.start()
 
-        owner, name = repo
-
         def _fetch():
-            return self._app.api.list_labels(token, owner, name)
+            return self._app.api.list_labels(token, self._owner, self._repo)
 
         def _on_labels(labels):
             self._labels_spinner.stop()
@@ -171,6 +172,10 @@ class CreateIssueDialog(Gtk.Dialog):
         for label in self._labels:
             btn = Gtk.ToggleButton(label=label.name)
             btn.get_style_context().add_class("label-chip")
+
+            # Pre-select default labels
+            if label.name in self._default_labels:
+                btn.set_active(True)
 
             # Apply per-label color via CSS provider
             css = _label_css(label.color)
@@ -214,13 +219,13 @@ class CreateIssueDialog(Gtk.Dialog):
         labels = self._get_selected_labels()
 
         token = get_token()
-        repo = config.get_repo(self._cfg)
-        if not token or not repo:
-            self._show_error("Not logged in or no repository selected.")
+        if not token:
+            self._show_error("Not logged in.")
             dialog.stop_emission_by_name("response")
             return
 
-        owner, name = repo
+        owner = self._owner
+        name = self._repo
 
         # Disable submit while working
         self._submit_btn.set_sensitive(False)

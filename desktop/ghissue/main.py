@@ -1,6 +1,7 @@
 """Entry point: DBus service daemon and GLib main loop."""
 
 import argparse
+import json
 import os
 import signal
 import sys
@@ -25,12 +26,19 @@ _DBUS_PATH = "/com/github/ghissue"
 _DBUS_XML = """
 <node>
   <interface name="com.github.ghissue">
-    <method name="CreateIssue"/>
+    <method name="CreateIssue">
+      <arg type="s" name="owner" direction="in"/>
+      <arg type="s" name="repo" direction="in"/>
+    </method>
     <method name="OpenSettings"/>
+    <method name="GetRepos">
+      <arg type="s" name="json" direction="out"/>
+    </method>
     <method name="GetQueueCount">
       <arg type="i" name="count" direction="out"/>
     </method>
     <method name="Quit"/>
+    <signal name="ReposChanged"/>
   </interface>
 </node>
 """
@@ -53,6 +61,7 @@ class Application:
         self.api = GitHubAPI()
         self.queue = IssueQueue()
         self.cfg = config.load()
+        self._connection = None
 
         # Network monitor — drain queue when connectivity returns
         self.net = NetworkMonitor(on_network_available=self._on_network_up)
@@ -74,6 +83,7 @@ class Application:
     # ── DBus ──
 
     def _on_bus_acquired(self, connection, name):
+        self._connection = connection
         introspection = Gio.DBusNodeInfo.new_for_xml(_DBUS_XML)
         connection.register_object(
             _DBUS_PATH,
@@ -83,15 +93,34 @@ class Application:
             None,
         )
 
+    def _emit_repos_changed(self):
+        if self._connection:
+            self._connection.emit_signal(
+                None,
+                _DBUS_PATH,
+                _APP_ID,
+                "ReposChanged",
+                None,
+            )
+
     def _on_dbus_method_call(self, connection, sender, object_path,
                              interface_name, method_name, parameters,
                              invocation):
         if method_name == "CreateIssue":
-            GLib.idle_add(self._on_create_issue, None)
+            owner = parameters.unpack()[0]
+            repo = parameters.unpack()[1]
+            GLib.idle_add(self._on_create_issue, owner, repo)
             invocation.return_value(None)
         elif method_name == "OpenSettings":
-            GLib.idle_add(self._on_settings, None)
+            GLib.idle_add(self._on_settings)
             invocation.return_value(None)
+        elif method_name == "GetRepos":
+            repos = config.get_repos(self.cfg)
+            payload = json.dumps([
+                {"owner": r["owner"], "name": r["name"], "color": r.get("color", "#238636")}
+                for r in repos
+            ])
+            invocation.return_value(GLib.Variant("(s)", (payload,)))
         elif method_name == "GetQueueCount":
             n = self.queue.count()
             invocation.return_value(GLib.Variant("(i)", (n,)))
@@ -106,21 +135,25 @@ class Application:
 
     # ── Actions ──
 
-    def _on_create_issue(self, _widget):
-        if not (is_logged_in() and config.get_repo(self.cfg)):
-            self._notify("ghissue", "Please configure a repository in Settings first.")
+    def _on_create_issue(self, owner, repo):
+        if not is_logged_in():
+            self._notify("ghissue", "Please log in first in Settings.")
+            return
+        if not config.find_repo(self.cfg, owner, repo):
+            self._notify("ghissue", "Repository not found in configuration.")
             return
         from .dialogs.create_issue import CreateIssueDialog
-        dlg = CreateIssueDialog(self)
+        dlg = CreateIssueDialog(self, owner, repo)
         dlg.run()
         dlg.destroy()
 
-    def _on_settings(self, _widget):
+    def _on_settings(self):
         from .dialogs.settings import SettingsDialog
         dlg = SettingsDialog(self)
         dlg.run()
         dlg.destroy()
         self.cfg = config.load()
+        self._emit_repos_changed()
 
     def _on_quit(self):
         if self._dbus_owner_id:
@@ -165,8 +198,8 @@ class Application:
         Gtk.main()
 
 
-def _send_dbus_call(method):
-    """Send a no-arg DBus call to the running daemon and exit."""
+def _send_dbus_call(method, params=None, reply_type=None):
+    """Send a DBus call to the running daemon and exit."""
     try:
         bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
         bus.call_sync(
@@ -174,8 +207,8 @@ def _send_dbus_call(method):
             _DBUS_PATH,
             _APP_ID,
             method,
-            None,
-            None,
+            params,
+            reply_type,
             Gio.DBusCallFlags.NONE,
             5000,
             None,
@@ -195,7 +228,17 @@ def main():
     args = parser.parse_args()
 
     if args.create:
-        _send_dbus_call("CreateIssue")
+        # Use first configured repo
+        cfg = config.load()
+        repo = config.get_repo(cfg)
+        if repo:
+            _send_dbus_call(
+                "CreateIssue",
+                GLib.Variant("(ss)", (repo[0], repo[1])),
+            )
+        else:
+            print("ghissue: no repository configured", file=sys.stderr)
+            sys.exit(1)
         return
 
     app = Application()
