@@ -16,14 +16,15 @@
    gnome-extensions install ghissue@njoerd.com.zip
    ```
 
-3. Restart GNOME Shell (log out and back in on Wayland, or press
-   `Alt+F2` → `r` → Enter on X11).
-
-4. Enable the extension:
+3. Enable the extension:
 
    ```sh
    gnome-extensions enable ghissue@njoerd.com
    ```
+
+   This may work without a restart, but it is unreliable for new
+   installs. If the extension doesn't appear, restart GNOME Shell
+   (log out and back in on Wayland, or `Alt+F2` → `r` → Enter on X11).
 
 ## Install from source
 
@@ -34,11 +35,14 @@ cp desktop/gnome-extension/metadata.json ~/.local/share/gnome-shell/extensions/g
 cp desktop/resources/ghissue-icon.svg ~/.local/share/gnome-shell/extensions/ghissue@njoerd.com/
 ```
 
-Then restart GNOME Shell and enable:
+Then enable the extension:
 
 ```sh
 gnome-extensions enable ghissue@njoerd.com
 ```
+
+If it doesn't appear, restart GNOME Shell (log out and back in on
+Wayland, or `Alt+F2` → `r` → Enter on X11).
 
 ## Uninstall
 
