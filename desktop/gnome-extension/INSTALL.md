@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- GNOME Shell 48
+- GNOME Shell 48 or 49
 - The ghissue daemon running on D-Bus (`com.github.ghissue`)
 
 ## Install from release
