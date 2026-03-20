@@ -6,7 +6,9 @@ import android.net.Network
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
+import com.ghissue.app.speech.WakeWordService
 import com.ghissue.app.storage.IssueQueueManager
+import com.ghissue.app.storage.PrefsStore
 import com.ghissue.app.storage.TokenStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +26,10 @@ class GhIssueApp : Application() {
     override fun onCreate() {
         super.onCreate()
         issueQueueManager = IssueQueueManager(this)
+
+        if (PrefsStore(this).wakeWordEnabled) {
+            WakeWordService.start(this)
+        }
 
         val cm = getSystemService(ConnectivityManager::class.java)
         cm.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {

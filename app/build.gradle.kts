@@ -55,4 +55,6 @@ dependencies {
     implementation(libs.okhttp.logging)
 
     implementation(libs.androidx.security.crypto)
+    implementation(libs.vosk.android) { artifact { type = "aar" } }
+    implementation(libs.jna) { artifact { type = "aar" } }
 }

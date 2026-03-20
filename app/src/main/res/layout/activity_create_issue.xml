@@ -34,7 +34,10 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:hint="@string/hint_issue_title"
-        android:layout_marginBottom="@dimen/field_spacing">
+        android:layout_marginBottom="@dimen/field_spacing"
+        app:endIconMode="custom"
+        app:endIconDrawable="@drawable/ic_mic"
+        app:endIconContentDescription="@string/btn_mic_title">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/editIssueTitle"
@@ -53,7 +56,10 @@
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="@string/hint_issue_body">
+            android:hint="@string/hint_issue_body"
+            app:endIconMode="custom"
+            app:endIconDrawable="@drawable/ic_mic"
+            app:endIconContentDescription="@string/btn_mic_body">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/editIssueBody"

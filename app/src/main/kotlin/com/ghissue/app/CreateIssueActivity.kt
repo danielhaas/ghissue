@@ -1,17 +1,23 @@
 package com.ghissue.app
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.ghissue.app.databinding.ActivityCreateIssueBinding
 import com.ghissue.app.network.ApiClient
 import com.ghissue.app.network.CreateIssueRequest
 import com.ghissue.app.network.QueuedIssue
+import com.ghissue.app.speech.SpeechHelper
+import com.ghissue.app.speech.WakeWordService
 import com.ghissue.app.storage.IssueQueueManager
 import com.ghissue.app.storage.PrefsStore
 import com.ghissue.app.storage.TokenStore
@@ -19,6 +25,7 @@ import com.ghissue.app.widget.CreateIssueWidgetProvider
 import android.appwidget.AppWidgetManager
 import android.content.res.ColorStateList
 import com.google.android.material.chip.Chip
+import com.google.android.material.textfield.TextInputLayout
 import kotlinx.coroutines.launch
 import java.io.IOException
 import java.util.UUID
@@ -26,6 +33,8 @@ import java.util.UUID
 class CreateIssueActivity : AppCompatActivity() {
 
     companion object {
+        const val EXTRA_AUTO_SPEECH = "auto_speech"
+        const val EXTRA_VOICE_TITLE = "voice_title"
         private const val KEY_TITLE = "issue_title"
         private const val KEY_BODY = "issue_body"
         private const val KEY_SELECTED_LABELS = "selected_labels"
@@ -38,6 +47,22 @@ class CreateIssueActivity : AppCompatActivity() {
     private var repoOwner: String = ""
     private var repoName: String = ""
     private var pendingSelectedLabels: List<String>? = null
+
+    private lateinit var speechHelper: SpeechHelper
+    private var activeMicTarget: MicTarget? = null
+    private var autoSpeechMode: Boolean = false
+
+    private enum class MicTarget { TITLE, BODY }
+
+    private val micPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            activeMicTarget?.let { startSpeechFor(it) }
+        } else {
+            Toast.makeText(this, R.string.mic_permission_required, Toast.LENGTH_SHORT).show()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -79,6 +104,59 @@ class CreateIssueActivity : AppCompatActivity() {
         binding.btnSendBody.setOnClickListener { submitIssue() }
         binding.btnReset.setOnClickListener { resetForm() }
 
+        speechHelper = SpeechHelper(this, object : SpeechHelper.Listener {
+            override fun onListeningStarted() {
+                val layout = when (activeMicTarget) {
+                    MicTarget.TITLE -> binding.editIssueTitle.parent.parent as TextInputLayout
+                    MicTarget.BODY -> binding.editIssueBody.parent.parent as TextInputLayout
+                    null -> return
+                }
+                layout.setEndIconDrawable(R.drawable.ic_mic_active)
+            }
+
+            override fun onResult(text: String) {
+                when (activeMicTarget) {
+                    MicTarget.TITLE -> {
+                        binding.editIssueTitle.setText(text)
+                        if (autoSpeechMode) {
+                            submitIssue()
+                        }
+                    }
+                    MicTarget.BODY -> {
+                        val current = binding.editIssueBody.text?.toString().orEmpty()
+                        val appended = if (current.isBlank()) text else "$current $text"
+                        binding.editIssueBody.setText(appended)
+                        binding.editIssueBody.setSelection(binding.editIssueBody.text?.length ?: 0)
+                    }
+                    null -> {}
+                }
+            }
+
+            override fun onError(message: String) {
+                Toast.makeText(this@CreateIssueActivity, message, Toast.LENGTH_SHORT).show()
+            }
+
+            override fun onListeningStopped() {
+                val layout = when (activeMicTarget) {
+                    MicTarget.TITLE -> binding.editIssueTitle.parent.parent as TextInputLayout
+                    MicTarget.BODY -> binding.editIssueBody.parent.parent as TextInputLayout
+                    null -> return
+                }
+                layout.setEndIconDrawable(R.drawable.ic_mic)
+            }
+        })
+
+        val lang = prefsStore.speechLanguage
+        if (lang.isNotBlank()) {
+            speechHelper.language = lang
+        }
+
+        val titleLayout = binding.editIssueTitle.parent.parent as TextInputLayout
+        titleLayout.setEndIconOnClickListener { onMicTap(MicTarget.TITLE) }
+
+        val bodyLayout = binding.editIssueBody.parent.parent as TextInputLayout
+        bodyLayout.setEndIconOnClickListener { onMicTap(MicTarget.BODY) }
+
         if (savedInstanceState != null) {
             binding.editIssueTitle.setText(savedInstanceState.getString(KEY_TITLE, ""))
             binding.editIssueBody.setText(savedInstanceState.getString(KEY_BODY, ""))
@@ -93,6 +171,47 @@ class CreateIssueActivity : AppCompatActivity() {
 
         fetchLabels()
         drainQueueIfNeeded()
+
+        val voiceTitle = intent.getStringExtra(EXTRA_VOICE_TITLE)
+        if (voiceTitle != null) {
+            binding.editIssueTitle.setText(voiceTitle)
+            submitIssue()
+        } else if (intent.getBooleanExtra(EXTRA_AUTO_SPEECH, false)) {
+            autoSpeechMode = true
+            onMicTap(MicTarget.TITLE)
+        }
+    }
+
+    private fun onMicTap(target: MicTarget) {
+        if (speechHelper.isListening) {
+            speechHelper.stop()
+            return
+        }
+        activeMicTarget = target
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            == PackageManager.PERMISSION_GRANTED
+        ) {
+            startSpeechFor(target)
+        } else {
+            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    private fun startSpeechFor(target: MicTarget) {
+        activeMicTarget = target
+        speechHelper.startListening()
+    }
+
+    override fun onDestroy() {
+        speechHelper.stop()
+        // Resume wake word listening if it was active
+        if (PrefsStore(this).wakeWordEnabled) {
+            val resumeIntent = android.content.Intent(this, WakeWordService::class.java).apply {
+                action = WakeWordService.ACTION_RESUME
+            }
+            startService(resumeIntent)
+        }
+        super.onDestroy()
     }
 
     private fun fetchLabels() {

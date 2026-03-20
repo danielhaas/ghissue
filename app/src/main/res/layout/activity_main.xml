@@ -172,6 +172,14 @@
                 android:text="@string/btn_select_default_labels"
                 android:layout_marginBottom="@dimen/field_spacing" />
 
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnVoiceSettings"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/btn_voice_settings"
+                android:layout_marginTop="@dimen/field_spacing"
+                style="@style/Widget.Material3.Button.OutlinedButton" />
+
         </LinearLayout>
 
     </LinearLayout>

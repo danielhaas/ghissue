@@ -50,6 +50,9 @@ class MainActivity : AppCompatActivity() {
         binding.btnLogout.setOnClickListener { logout() }
         binding.btnSelectRepo.setOnClickListener { selectRepo() }
         binding.btnSelectDefaultLabels.setOnClickListener { selectDefaultLabels() }
+        binding.btnVoiceSettings.setOnClickListener {
+            startActivity(Intent(this, VoiceSettingsActivity::class.java))
+        }
     }
 
     override fun onResume() {
