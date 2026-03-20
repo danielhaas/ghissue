@@ -31,7 +31,9 @@ struct RepoSelectionView: View {
                 }
             }
             .navigationTitle("Select Repository")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -46,27 +48,30 @@ struct RepoSelectionView: View {
     }
 
     private var repoList: some View {
-        List(viewModel.repos) { repo in
-            Button {
-                viewModel.selectRepo(repo)
-                dismiss()
-            } label: {
-                HStack {
-                    VStack(alignment: .leading) {
-                        Text(repo.name)
-                            .font(.body)
-                        Text(repo.owner.login)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if repo.owner.login == viewModel.selectedOwner && repo.name == viewModel.selectedName {
-                        Image(systemName: "checkmark")
-                            .foregroundStyle(.accent)
+        let repos: [RepoResponse] = viewModel.repos
+        return List {
+            ForEach(repos, id: \.id) { (repo: RepoResponse) in
+                Button {
+                    viewModel.selectRepo(repo)
+                    dismiss()
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(repo.name)
+                                .font(.body)
+                            Text(repo.owner.login)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if repo.owner.login == viewModel.selectedOwner && repo.name == viewModel.selectedName {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(Color.accentColor)
+                        }
                     }
                 }
+                .foregroundStyle(.primary)
             }
-            .foregroundStyle(.primary)
         }
     }
 }

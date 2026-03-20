@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 struct OAuthLoginSection: View {
     @Bindable var viewModel: AuthViewModel
@@ -65,7 +68,12 @@ struct OAuthLoginSection: View {
 
                 HStack(spacing: 12) {
                     Button {
+                        #if os(iOS)
                         UIPasteboard.general.string = code
+                        #elseif os(macOS)
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(code, forType: .string)
+                        #endif
                     } label: {
                         Label("Copy Code", systemImage: "doc.on.doc")
                     }

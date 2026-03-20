@@ -1,0 +1,1 @@
+../../../ios/GhIssue/Models/GitHubModels.swift

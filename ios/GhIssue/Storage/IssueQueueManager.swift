@@ -1,7 +1,11 @@
 import Foundation
 
 actor IssueQueueManager {
+    #if os(iOS)
     private let defaults = UserDefaults(suiteName: Constants.appGroupID) ?? .standard
+    #else
+    private let defaults = UserDefaults.standard
+    #endif
     private let queueKey = "queued_issues"
 
     struct DrainResult {

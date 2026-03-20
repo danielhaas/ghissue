@@ -5,6 +5,9 @@
 /build/
 /app/build/
 __pycache__/
+*.jks
+*.keystore
+keystore.properties
 
 # iOS / Xcode
 *.xcodeproj/xcuserdata/
@@ -18,3 +21,6 @@ DerivedData/
 *.dSYM.zip
 *.dSYM
 .build/
+
+# macOS build output
+macos/build/

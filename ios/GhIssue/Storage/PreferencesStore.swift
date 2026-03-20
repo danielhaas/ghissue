@@ -1,7 +1,11 @@
 import Foundation
 
 struct PreferencesStore {
+    #if os(iOS)
     private static let defaults = UserDefaults(suiteName: Constants.appGroupID) ?? .standard
+    #else
+    private static let defaults = UserDefaults.standard
+    #endif
 
     // MARK: - Config
 

@@ -27,29 +27,31 @@ struct KeychainStore {
 
     // MARK: - Private
 
-    private static func save(_ token: String) {
-        delete()
-        let data = Data(token.utf8)
-        let query: [String: Any] = [
+    private static func baseQuery() -> [String: Any] {
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
-            kSecAttrAccessGroup as String: accessGroup,
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
         ]
+        #if os(iOS)
+        query[kSecAttrAccessGroup as String] = accessGroup
+        query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        #endif
+        return query
+    }
+
+    private static func save(_ token: String) {
+        delete()
+        let data = Data(token.utf8)
+        var query = baseQuery()
+        query[kSecValueData as String] = data
         SecItemAdd(query as CFDictionary, nil)
     }
 
     private static func read() -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecAttrAccessGroup as String: accessGroup,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
+        var query = baseQuery()
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         guard status == errSecSuccess, let data = result as? Data else { return nil }
@@ -57,12 +59,7 @@ struct KeychainStore {
     }
 
     private static func delete() {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecAttrAccessGroup as String: accessGroup,
-        ]
+        let query = baseQuery()
         SecItemDelete(query as CFDictionary)
     }
 }

@@ -19,7 +19,9 @@ struct CreateIssueView: View {
                 messagesSection
             }
             .navigationTitle("Create Issue")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
