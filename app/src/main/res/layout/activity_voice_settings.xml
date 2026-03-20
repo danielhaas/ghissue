@@ -35,6 +35,20 @@
         android:layout_marginBottom="@dimen/section_spacing"
         style="@style/Widget.Material3.Button.OutlinedButton" />
 
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/wake_phrase_hint"
+        android:layout_marginBottom="@dimen/field_spacing">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/editWakePhrase"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="text"
+            android:singleLine="true" />
+    </com.google.android.material.textfield.TextInputLayout>
+
     <com.google.android.material.materialswitch.MaterialSwitch
         android:id="@+id/switchWakeWord"
         android:layout_width="match_parent"

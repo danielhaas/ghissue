@@ -85,15 +85,30 @@ class VoiceSettingsActivity : AppCompatActivity() {
         updateLanguageDisplay()
         binding.btnSelectLanguage.setOnClickListener { showLanguagePicker() }
 
+        val currentPhrase = prefsStore.wakePhrase
+        binding.editWakePhrase.setText(currentPhrase.ifBlank { null })
+        binding.editWakePhrase.hint = getString(R.string.wake_phrase_hint)
+
         binding.switchWakeWord.isChecked = prefsStore.wakeWordEnabled
         binding.switchWakeWord.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
+                saveWakePhrase()
                 requestNotificationPermissionThenMic()
             } else {
                 prefsStore.wakeWordEnabled = false
                 WakeWordService.stop(this)
             }
         }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        saveWakePhrase()
+    }
+
+    private fun saveWakePhrase() {
+        val phrase = binding.editWakePhrase.text.toString().trim().lowercase()
+        prefsStore.wakePhrase = phrase
     }
 
     private fun updateLanguageDisplay() {

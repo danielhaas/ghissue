@@ -93,6 +93,10 @@ class PrefsStore(context: Context) {
         get() = prefs.getString(KEY_SPEECH_LANGUAGE, "") ?: ""
         set(value) = prefs.edit().putString(KEY_SPEECH_LANGUAGE, value).apply()
 
+    var wakePhrase: String
+        get() = prefs.getString(KEY_WAKE_PHRASE, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_WAKE_PHRASE, value).apply()
+
     fun clearWidgetRepo(widgetId: Int) {
         prefs.edit()
             .remove("widget_${widgetId}_repo_owner")
@@ -115,5 +119,6 @@ class PrefsStore(context: Context) {
         private const val KEY_DEFAULT_LABELS = "default_labels"
         private const val KEY_WAKE_WORD_ENABLED = "wake_word_enabled"
         private const val KEY_SPEECH_LANGUAGE = "speech_language"
+        private const val KEY_WAKE_PHRASE = "wake_phrase"
     }
 }

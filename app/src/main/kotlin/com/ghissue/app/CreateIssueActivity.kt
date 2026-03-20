@@ -35,6 +35,7 @@ class CreateIssueActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_AUTO_SPEECH = "auto_speech"
         const val EXTRA_VOICE_TITLE = "voice_title"
+        private const val VOICE_LABEL = "voice"
         private const val KEY_TITLE = "issue_title"
         private const val KEY_BODY = "issue_body"
         private const val KEY_SELECTED_LABELS = "selected_labels"
@@ -270,7 +271,12 @@ class CreateIssueActivity : AppCompatActivity() {
             .map { binding.chipGroupLabels.getChildAt(it) as Chip }
             .filter { it.isChecked }
             .map { it.text.toString() }
-            .ifEmpty { null }
+            .toMutableList()
+
+        val isVoice = autoSpeechMode || intent.hasExtra(EXTRA_VOICE_TITLE)
+        if (isVoice && VOICE_LABEL !in selectedLabels) {
+            selectedLabels.add(VOICE_LABEL)
+        }
 
         setLoading(true)
 
@@ -281,7 +287,7 @@ class CreateIssueActivity : AppCompatActivity() {
                     token = token,
                     owner = repoOwner,
                     repo = repoName,
-                    request = CreateIssueRequest(title = title, body = body, labels = selectedLabels)
+                    request = CreateIssueRequest(title = title, body = body, labels = selectedLabels.ifEmpty { null })
                 )
                 Toast.makeText(
                     this@CreateIssueActivity,
@@ -296,7 +302,7 @@ class CreateIssueActivity : AppCompatActivity() {
                     repo = repoName,
                     title = title,
                     body = body,
-                    labels = selectedLabels,
+                    labels = selectedLabels.ifEmpty { null },
                     createdAt = System.currentTimeMillis()
                 )
                 issueQueueManager.enqueue(queued)

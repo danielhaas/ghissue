@@ -85,10 +85,12 @@
 
     <!-- Wake Word -->
     <string name="wake_word_section">Voice Activation</string>
-    <string name="wake_word_toggle">Say \"Computer\" to create issue</string>
+    <string name="wake_phrase_hint">Wake phrase (default: second memory)</string>
+    <string name="wake_word_toggle">Enable voice activation</string>
     <string name="wake_word_channel_name">Voice Activation</string>
     <string name="wake_word_channel_description">Listens for wake word to create issues</string>
     <string name="wake_word_notification_title">ghissue listening</string>
     <string name="wake_word_notification_text">Say \"Computer\" to create a new issue</string>
+    <string name="wake_word_notification_text_dynamic">Say \"%1$s\" to create a new issue</string>
     <string name="wake_word_triggered_text">Wake word detected — creating issue</string>
 </resources>

@@ -12,6 +12,7 @@ import android.os.IBinder
 import android.util.Log
 import com.ghissue.app.CreateIssueActivity
 import com.ghissue.app.R
+import com.ghissue.app.storage.PrefsStore
 import org.json.JSONObject
 import org.vosk.LibVosk
 import org.vosk.LogLevel
@@ -28,7 +29,7 @@ class WakeWordService : Service(), RecognitionListener {
         private const val CHANNEL_ID = "wake_word_channel"
         private const val NOTIFICATION_ID = 1001
         private const val SAMPLE_RATE = 16000.0f
-        private const val WAKE_WORD = "computer"
+        private const val DEFAULT_WAKE_PHRASE = "second memory"
         const val ACTION_RESUME = "com.ghissue.app.speech.RESUME"
 
         fun start(context: Context) {
@@ -49,12 +50,15 @@ class WakeWordService : Service(), RecognitionListener {
     private var speechService: SpeechService? = null
     private var triggered = false
     private var capturingTitle = false
+    private var wakePhrase = DEFAULT_WAKE_PHRASE
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         LibVosk.setLogLevel(LogLevel.INFO)
+        val prefs = PrefsStore(this)
+        wakePhrase = prefs.wakePhrase.ifBlank { DEFAULT_WAKE_PHRASE }
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
         initModel()
@@ -88,9 +92,15 @@ class WakeWordService : Service(), RecognitionListener {
         val model = this.model ?: return
 
         try {
-            val recognizer = Recognizer(model, SAMPLE_RATE,
-                """["$WAKE_WORD", "[unk]"]"""
-            )
+            // Build grammar with the full phrase and individual words as decoys
+            val words = wakePhrase.split(" ").filter { it.isNotBlank() }
+            val grammarEntries = mutableListOf(wakePhrase)
+            grammarEntries.addAll(words)
+            grammarEntries.add("[unk]")
+            val grammar = grammarEntries.joinToString("\", \"", "[\"", "\"]")
+            Log.d(TAG, "Grammar: $grammar")
+
+            val recognizer = Recognizer(model, SAMPLE_RATE, grammar)
             speechService = SpeechService(recognizer, SAMPLE_RATE)
             speechService?.startListening(this)
             Log.i(TAG, "Wake word detection started")
@@ -129,11 +139,11 @@ class WakeWordService : Service(), RecognitionListener {
     }
 
     override fun onPartialResult(hypothesis: String?) {
-        if (hypothesis == null) return
+        if (hypothesis == null || triggered || capturingTitle) return
         try {
             val partial = JSONObject(hypothesis).optString("partial", "")
-            if (!triggered && !capturingTitle && partial.contains(WAKE_WORD)) {
-                Log.i(TAG, "Wake word detected on partial!")
+            if (partial.contains(wakePhrase)) {
+                Log.i(TAG, "Wake phrase detected on partial: $partial")
                 triggered = true
                 startTitleCapture()
             }
@@ -141,16 +151,29 @@ class WakeWordService : Service(), RecognitionListener {
     }
 
     override fun onResult(hypothesis: String?) {
-        if (hypothesis == null || !capturingTitle) return
-        try {
-            val text = JSONObject(hypothesis).optString("text", "").trim()
-            if (text.isNotBlank()) {
-                Log.i(TAG, "Captured title: $text")
-                launchCreateIssue(text)
+        if (hypothesis == null) return
+        if (capturingTitle) {
+            try {
+                val text = JSONObject(hypothesis).optString("text", "").trim()
+                if (text.isNotBlank()) {
+                    Log.i(TAG, "Captured title: $text")
+                    launchCreateIssue(text)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error parsing title result", e)
             }
-            // If empty, keep listening for the title
-        } catch (e: Exception) {
-            Log.e(TAG, "Error parsing title result", e)
+            return
+        }
+        // Fallback: also check final result for wake phrase
+        if (!triggered) {
+            try {
+                val text = JSONObject(hypothesis).optString("text", "")
+                if (text.contains(wakePhrase)) {
+                    Log.i(TAG, "Wake phrase detected on result: $text")
+                    triggered = true
+                    startTitleCapture()
+                }
+            } catch (_: Exception) {}
         }
     }
 
@@ -225,7 +248,7 @@ class WakeWordService : Service(), RecognitionListener {
     private fun buildNotification(): Notification {
         return Notification.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.wake_word_notification_title))
-            .setContentText(getString(R.string.wake_word_notification_text))
+            .setContentText(getString(R.string.wake_word_notification_text_dynamic, wakePhrase))
             .setSmallIcon(R.drawable.ic_mic)
             .setOngoing(true)
             .build()
