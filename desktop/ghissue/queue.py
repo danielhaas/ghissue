@@ -24,6 +24,7 @@ class QueuedIssue:
     labels: list[str]
     owner: str
     repo: str
+    account: str = "github.com"
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: float = field(default_factory=time.time)
 
@@ -83,6 +84,7 @@ class IssueQueue:
                 labels=i.get("labels", []),
                 owner=i["owner"],
                 repo=i["repo"],
+                account=i.get("account", "github.com"),
                 timestamp=i.get("timestamp", 0),
             )
             for i in items
@@ -92,11 +94,14 @@ class IssueQueue:
         with self._lock:
             return len(self._load())
 
-    def drain(self, api, token: str) -> DrainResult:
+    def drain(self, resolve) -> DrainResult:
         """Submit all queued issues. Returns drain result.
 
+        *resolve(account_id)* returns (api, token) for an account, or None
+        if the account is gone or logged out; such items stay queued.
+
         - ConnectionError → stop (network down)
-        - 401 → stop (auth invalid)
+        - 401 → keep that account's items queued, continue with others
         - Other HTTP error → skip item, continue
         """
         result = DrainResult()
@@ -104,7 +109,16 @@ class IssueQueue:
         if not items:
             return result
 
+        unauthorized: set[str] = set()
         for issue in items:
+            if issue.account in unauthorized:
+                continue
+            client = resolve(issue.account)
+            if client is None:
+                unauthorized.add(issue.account)
+                result.stopped_reason = "auth"
+                continue
+            api, token = client
             try:
                 api.create_issue(
                     token=token,
@@ -121,8 +135,9 @@ class IssueQueue:
                 break
             except requests.HTTPError as e:
                 if e.response is not None and e.response.status_code == 401:
+                    unauthorized.add(issue.account)
                     result.stopped_reason = "auth"
-                    break
+                    continue
                 result.failed += 1
                 self.remove(issue.id)
 

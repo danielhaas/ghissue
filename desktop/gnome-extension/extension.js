@@ -13,9 +13,10 @@ const IFACE_NAME = 'com.github.ghissue';
 
 const GhissueRepoButton = GObject.registerClass(
 class GhissueRepoButton extends PanelMenu.Button {
-    _init(owner, repoName, color, extension) {
-        super._init(0.0, `ghissue-${owner}-${repoName}`);
+    _init(account, owner, repoName, color, extension) {
+        super._init(0.0, `ghissue-${account}-${owner}-${repoName}`);
 
+        this._account = account;
         this._owner = owner;
         this._repoName = repoName;
         this._color = color;
@@ -96,8 +97,8 @@ class GhissueRepoButton extends PanelMenu.Button {
             return;
 
         Gio.DBus.session.call(
-            BUS_NAME, OBJECT_PATH, IFACE_NAME, 'CreateIssue',
-            new GLib.Variant('(ss)', [this._owner, this._repoName]),
+            BUS_NAME, OBJECT_PATH, IFACE_NAME, 'CreateIssueFor',
+            new GLib.Variant('(sss)', [this._account, this._owner, this._repoName]),
             null, Gio.DBusCallFlags.NONE, 5000, null,
             (conn, res) => {
                 try { conn.call_finish(res); }
@@ -161,9 +162,10 @@ export default class GhissueExtension {
                 this._rebuildButtons();
             },
             () => {
+                // Daemon quit or crashed: drop the buttons; they come back
+                // from GetRepos when the daemon reappears.
                 this._daemonRunning = false;
-                for (const btn of this._buttons)
-                    btn.setDaemonRunning(false);
+                this._destroyButtons();
             },
         );
 
@@ -221,11 +223,11 @@ export default class GhissueExtension {
 
         for (const repo of repos) {
             const btn = new GhissueRepoButton(
-                repo.owner, repo.name, repo.color, this
+                repo.account, repo.owner, repo.name, repo.color, this
             );
             btn.setDaemonRunning(this._daemonRunning);
             Main.panel.addToStatusArea(
-                `ghissue-${repo.owner}-${repo.name}`, btn
+                `ghissue-${repo.account}-${repo.owner}-${repo.name}`, btn
             );
             this._buttons.push(btn);
         }

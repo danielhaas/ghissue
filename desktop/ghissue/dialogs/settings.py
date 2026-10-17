@@ -1,6 +1,7 @@
-"""Settings dialog: client ID, login, multi-repo management."""
+"""Settings dialog: accounts (GitHub, Gitea, MindBlown) and multi-repo management."""
 
 import threading
+import webbrowser
 
 import gi
 
@@ -8,10 +9,24 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, Gtk
 
 from .. import config
-from ..api import GitHubAPI
+from ..api import GiteaAPI, MindBlownAPI
 from ..keyring import clear_token, get_token, is_logged_in, store_token
 from ..main import run_in_background
 from .device_flow import DeviceFlowDialog
+
+_KIND_TITLES = {"github": "GitHub", "gitea": "Gitea", "mindblown": "MindBlown"}
+
+
+def _show_error(parent, msg):
+    dlg = Gtk.MessageDialog(
+        transient_for=parent,
+        modal=True,
+        message_type=Gtk.MessageType.ERROR,
+        buttons=Gtk.ButtonsType.OK,
+        text=msg,
+    )
+    dlg.run()
+    dlg.destroy()
 
 
 class SettingsDialog(Gtk.Dialog):
@@ -21,7 +36,7 @@ class SettingsDialog(Gtk.Dialog):
             transient_for=None,
             modal=True,
         )
-        self.set_default_size(460, -1)
+        self.set_default_size(520, -1)
         self.set_resizable(False)
         self._app = app
         self._cfg = config.load()
@@ -34,7 +49,7 @@ class SettingsDialog(Gtk.Dialog):
         box.set_margin_bottom(12)
 
         # ── Client ID ──
-        box.add(Gtk.Label(label="Client ID:", xalign=0))
+        box.add(Gtk.Label(label="GitHub Client ID:", xalign=0))
         self._client_id_entry = Gtk.Entry()
         self._client_id_entry.set_text(self._cfg.get("client_id", ""))
         self._client_id_entry.connect("changed", self._on_client_id_changed)
@@ -42,13 +57,21 @@ class SettingsDialog(Gtk.Dialog):
 
         box.add(Gtk.Separator())
 
-        # ── Login status ──
-        self._login_label = Gtk.Label(xalign=0)
-        box.add(self._login_label)
+        # ── Accounts ──
+        box.add(Gtk.Label(label="Accounts:", xalign=0))
 
-        self._login_btn = Gtk.Button()
-        self._login_btn.connect("clicked", self._on_login_toggle)
-        box.add(self._login_btn)
+        self._account_listbox = Gtk.ListBox()
+        self._account_listbox.set_selection_mode(Gtk.SelectionMode.NONE)
+        box.add(self._account_listbox)
+
+        add_account_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        add_gitea_btn = Gtk.Button(label="Add Gitea Account...")
+        add_gitea_btn.connect("clicked", lambda _b: self._on_add_account("gitea"))
+        add_account_box.pack_start(add_gitea_btn, True, True, 0)
+        add_mb_btn = Gtk.Button(label="Add MindBlown Account...")
+        add_mb_btn.connect("clicked", lambda _b: self._on_add_account("mindblown"))
+        add_account_box.pack_start(add_mb_btn, True, True, 0)
+        box.add(add_account_box)
 
         box.add(Gtk.Separator())
 
@@ -66,7 +89,7 @@ class SettingsDialog(Gtk.Dialog):
         # Close button
         self.add_button("Close", Gtk.ResponseType.CLOSE)
 
-        self._update_login_ui()
+        self._rebuild_account_list()
         self._rebuild_repo_list()
         self.show_all()
 
@@ -76,60 +99,128 @@ class SettingsDialog(Gtk.Dialog):
         self._cfg["client_id"] = entry.get_text().strip()
         config.save(self._cfg)
 
-    # ── Login ──
+    # ── Accounts ──
 
-    def _update_login_ui(self):
-        if is_logged_in():
-            self._login_label.set_text("Status: Logged in")
-            self._login_btn.set_label("Logout")
+    def _logged_in_accounts(self) -> list[dict]:
+        return [a for a in config.get_accounts(self._cfg) if is_logged_in(a["id"])]
+
+    def _rebuild_account_list(self):
+        for child in self._account_listbox.get_children():
+            self._account_listbox.remove(child)
+        for account in config.get_accounts(self._cfg):
+            self._account_listbox.add(self._make_account_row(account))
+        self._account_listbox.show_all()
+        self._add_repo_btn.set_sensitive(bool(self._logged_in_accounts()))
+
+    def _make_account_row(self, account):
+        row = Gtk.ListBoxRow()
+        row.set_selectable(False)
+        hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        hbox.set_margin_start(8)
+        hbox.set_margin_end(8)
+        hbox.set_margin_top(4)
+        hbox.set_margin_bottom(4)
+
+        logged_in = is_logged_in(account["id"])
+        if logged_in:
+            status = f"as {account['username']}" if account.get("username") else "logged in"
         else:
-            self._login_label.set_text("Status: Not logged in")
-            self._login_btn.set_label("Login")
-        self._add_repo_btn.set_sensitive(is_logged_in())
+            status = "not logged in"
+        lbl = Gtk.Label(xalign=0)
+        lbl.set_markup(
+            f"<b>{_KIND_TITLES[account['kind']]}</b> · "
+            f"{GLib.markup_escape_text(account['id'])} "
+            f'<span size="small" foreground="gray">{GLib.markup_escape_text(status)}</span>'
+        )
+        lbl.set_hexpand(True)
+        hbox.pack_start(lbl, True, True, 0)
 
-    def _on_login_toggle(self, _btn):
-        if is_logged_in():
-            clear_token()
-            self._update_login_ui()
+        if account["kind"] == "github":
+            login_btn = Gtk.Button(label="Logout" if logged_in else "Login")
+            login_btn.connect("clicked", self._on_github_login_toggle)
+            hbox.pack_start(login_btn, False, False, 0)
         else:
-            self._start_login()
+            relogin_btn = Gtk.Button(label="Log In Again..." if logged_in else "Log In...")
+            relogin_btn.connect(
+                "clicked", lambda _b: self._on_add_account(account["kind"], account),
+            )
+            hbox.pack_start(relogin_btn, False, False, 0)
 
-    def _start_login(self):
+            remove_btn = Gtk.Button(label="Remove")
+            remove_btn.get_style_context().add_class("destructive-action")
+            remove_btn.connect("clicked", lambda _b: self._on_remove_account(account))
+            hbox.pack_start(remove_btn, False, False, 0)
+
+        row.add(hbox)
+        return row
+
+    def _on_add_account(self, kind, account=None):
+        dlg = AccountDialog(self, kind, account)
+        result = dlg.run()
+        dlg.destroy()
+        if result == Gtk.ResponseType.OK:
+            self._cfg = config.load()  # AccountDialog saved the new account
+            self._rebuild_account_list()
+
+    def _on_remove_account(self, account):
+        confirm = Gtk.MessageDialog(
+            transient_for=self,
+            modal=True,
+            message_type=Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.OK_CANCEL,
+            text=f"Remove {account['id']} and its repositories?",
+        )
+        result = confirm.run()
+        confirm.destroy()
+        if result != Gtk.ResponseType.OK:
+            return
+        clear_token(account["id"])
+        config.remove_account(self._cfg, account["id"])
+        config.save(self._cfg)
+        self._rebuild_account_list()
+        self._rebuild_repo_list()
+
+    def _on_github_login_toggle(self, btn):
+        if is_logged_in(config.GITHUB_ACCOUNT_ID):
+            clear_token(config.GITHUB_ACCOUNT_ID)
+            self._rebuild_account_list()
+        else:
+            self._start_github_login(btn)
+
+    def _start_github_login(self, btn):
         client_id = self._cfg.get("client_id", "").strip()
         if not client_id:
             self._show_error("Please enter a Client ID first.")
             return
 
-        self._login_btn.set_sensitive(False)
-        self._login_btn.set_label("Requesting code...")
+        btn.set_sensitive(False)
+        btn.set_label("Requesting code...")
 
         def _request():
             return self._app.api.request_device_code(client_id)
 
         def _on_code(resp):
-            self._login_btn.set_sensitive(True)
-            self._login_btn.set_label("Login")
             dlg = DeviceFlowDialog(self._app, resp)
             result = dlg.run()
             token = dlg.token
             dlg.destroy()
             if result == Gtk.ResponseType.OK and token:
-                store_token(token)
-            self._update_login_ui()
+                store_token(config.GITHUB_ACCOUNT_ID, token)
+            self._rebuild_account_list()
+
+        def _on_error(msg):
+            btn.set_sensitive(True)
+            btn.set_label("Login")
+            self._show_error(f"Failed to start login:\n{msg}")
 
         def _request_and_callback():
             try:
                 resp = _request()
                 GLib.idle_add(_on_code, resp)
             except Exception as e:
-                GLib.idle_add(self._on_login_request_error, str(e))
+                GLib.idle_add(_on_error, str(e))
 
         threading.Thread(target=_request_and_callback, daemon=True).start()
-
-    def _on_login_request_error(self, msg):
-        self._login_btn.set_sensitive(True)
-        self._login_btn.set_label("Login")
-        self._show_error(f"Failed to start login:\n{msg}")
 
     # ── Repository list ──
 
@@ -181,7 +272,7 @@ class SettingsDialog(Gtk.Dialog):
         hbox.pack_start(color_dot, False, False, 0)
 
         # Repo name
-        lbl = Gtk.Label(label=f"{repo['owner']}/{repo['name']}", xalign=0)
+        lbl = Gtk.Label(label=config.repo_display_name(self._cfg, repo), xalign=0)
         lbl.set_hexpand(True)
         hbox.pack_start(lbl, True, True, 0)
 
@@ -200,38 +291,39 @@ class SettingsDialog(Gtk.Dialog):
         return row
 
     def _on_add_repo(self, _btn):
-        token = get_token()
-        if not token:
-            self._show_error("Please log in first.")
+        clients = [
+            (a, self._app.client(a["id"], self._cfg))
+            for a in self._logged_in_accounts()
+        ]
+        if not clients:
+            self._show_error("Please log in to an account first.")
             return
 
         self._add_repo_btn.set_sensitive(False)
         self._add_repo_btn.set_label("Loading...")
 
         def _fetch():
-            return self._app.api.list_repos(token)
+            """Returns ([(account, repo)], [error message])."""
+            found, errors = [], []
+            for account, (api, token) in clients:
+                try:
+                    found += [(account, r) for r in api.list_repos(token)]
+                except Exception as e:
+                    errors.append(f"{account['id']}: {e}")
+            return found, errors
 
-        def _on_repos(repos):
+        def _on_repos(result):
+            found, errors = result
             self._add_repo_btn.set_sensitive(True)
             self._add_repo_btn.set_label("Add Repository...")
-            if not repos:
+            if errors:
+                self._show_error("Failed to load repositories:\n" + "\n".join(errors))
+            if found:
+                self._show_repo_picker(found)
+            elif not errors:
                 self._show_error("No repositories found.")
-                return
-            self._show_repo_picker(repos)
 
-        def _fetch_and_callback():
-            try:
-                repos = _fetch()
-                GLib.idle_add(_on_repos, repos)
-            except Exception as e:
-                GLib.idle_add(self._on_repo_fetch_error, str(e))
-
-        threading.Thread(target=_fetch_and_callback, daemon=True).start()
-
-    def _on_repo_fetch_error(self, msg):
-        self._add_repo_btn.set_sensitive(True)
-        self._add_repo_btn.set_label("Add Repository...")
-        self._show_error(f"Failed to load repositories:\n{msg}")
+        run_in_background(_fetch, _on_repos)
 
     def _show_repo_picker(self, repos):
         dlg = Gtk.Dialog(
@@ -239,7 +331,7 @@ class SettingsDialog(Gtk.Dialog):
             transient_for=self,
             modal=True,
         )
-        dlg.set_default_size(400, 400)
+        dlg.set_default_size(440, 440)
 
         box = dlg.get_content_area()
 
@@ -256,20 +348,25 @@ class SettingsDialog(Gtk.Dialog):
         box.add(scroll)
 
         rows = []
-        for repo in repos:
+        for account, repo in repos:
             # Skip already-configured repos
-            if config.find_repo(self._cfg, repo.owner, repo.name):
+            if config.find_repo(self._cfg, account["id"], repo.owner, repo.name):
                 continue
             row = Gtk.ListBoxRow()
-            lbl = Gtk.Label(label=repo.full_name, xalign=0)
+            lbl = Gtk.Label(xalign=0)
+            lbl.set_markup(
+                f"{GLib.markup_escape_text(repo.full_name)} "
+                f'<span size="small" foreground="gray">'
+                f"{GLib.markup_escape_text(account['id'])}</span>"
+            )
             lbl.set_margin_start(8)
             lbl.set_margin_end(8)
             lbl.set_margin_top(4)
             lbl.set_margin_bottom(4)
             row.add(lbl)
-            row._repo = repo
+            row._repo = (account, repo)
             listbox.add(row)
-            rows.append((row, repo.full_name.lower()))
+            rows.append((row, f"{repo.full_name} {account['id']}".lower()))
 
         def _filter(entry):
             text = entry.get_text().lower()
@@ -287,15 +384,15 @@ class SettingsDialog(Gtk.Dialog):
         if result == Gtk.ResponseType.OK:
             selected = listbox.get_selected_row()
             if selected:
-                repo = selected._repo
-                config.add_repo(self._cfg, repo.owner, repo.name)
+                account, repo = selected._repo
+                config.add_repo(self._cfg, account["id"], repo.owner, repo.name)
                 config.save(self._cfg)
                 self._rebuild_repo_list()
 
         dlg.destroy()
 
     def _on_remove_repo(self, repo):
-        config.remove_repo(self._cfg, repo["owner"], repo["name"])
+        config.remove_repo(self._cfg, repo["account"], repo["owner"], repo["name"])
         config.save(self._cfg)
         self._rebuild_repo_list()
 
@@ -309,15 +406,139 @@ class SettingsDialog(Gtk.Dialog):
     # ── Helpers ──
 
     def _show_error(self, msg):
-        dlg = Gtk.MessageDialog(
-            transient_for=self,
+        _show_error(self, msg)
+
+
+class AccountDialog(Gtk.Dialog):
+    """Add (or re-authenticate) a Gitea or MindBlown account.
+
+    Gitea takes a personal access token; MindBlown takes email/password,
+    which are exchanged for a long-lived token and not stored.
+    """
+
+    def __init__(self, parent, kind: str, account: dict = None):
+        title = _KIND_TITLES[kind]
+        super().__init__(
+            title=f"Log In to {account['id']}" if account else f"Add {title} Account",
+            transient_for=parent,
             modal=True,
-            message_type=Gtk.MessageType.ERROR,
-            buttons=Gtk.ButtonsType.OK,
-            text=msg,
         )
-        dlg.run()
-        dlg.destroy()
+        self.set_default_size(420, -1)
+        self.set_resizable(False)
+        self._kind = kind
+
+        box = self.get_content_area()
+        box.set_spacing(8)
+        box.set_margin_start(16)
+        box.set_margin_end(16)
+        box.set_margin_top(12)
+        box.set_margin_bottom(12)
+
+        box.add(Gtk.Label(label="Server URL:", xalign=0))
+        self._url_entry = Gtk.Entry()
+        self._url_entry.set_placeholder_text("https://git.example.com")
+        if account:
+            self._url_entry.set_text(account["base_url"])
+            self._url_entry.set_sensitive(False)
+        box.add(self._url_entry)
+
+        if kind == "gitea":
+            box.add(Gtk.Label(label="Access token:", xalign=0))
+            self._token_entry = Gtk.Entry()
+            self._token_entry.set_visibility(False)
+            box.add(self._token_entry)
+
+            hint = Gtk.Label(xalign=0)
+            hint.set_line_wrap(True)
+            hint.set_markup(
+                '<span size="small">Scopes needed: read:user, read:repository, '
+                "write:issue (and read:organization for org labels).</span>"
+            )
+            box.add(hint)
+
+            token_btn = Gtk.Button(label="Create Token in Browser")
+            token_btn.connect("clicked", self._on_open_token_page)
+            box.add(token_btn)
+        else:
+            box.add(Gtk.Label(label="Email:", xalign=0))
+            self._email_entry = Gtk.Entry()
+            box.add(self._email_entry)
+            box.add(Gtk.Label(label="Password:", xalign=0))
+            self._password_entry = Gtk.Entry()
+            self._password_entry.set_visibility(False)
+            self._password_entry.set_activates_default(True)
+            box.add(self._password_entry)
+
+        self.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        self._ok_btn = self.add_button("Log In", Gtk.ResponseType.OK)
+        self._ok_btn.get_style_context().add_class("suggested-action")
+        self.set_default_response(Gtk.ResponseType.OK)
+
+        self.connect("response", self._on_response)
+        self.show_all()
+
+    def _base_url(self) -> str:
+        text = self._url_entry.get_text().strip()
+        return config.normalize_base_url(text) if text else ""
+
+    def _on_open_token_page(self, _btn):
+        base_url = self._base_url()
+        if not base_url:
+            _show_error(self, "Please enter the server URL first.")
+            return
+        webbrowser.open(GiteaAPI(base_url).token_settings_url())
+
+    def _on_response(self, dialog, response_id):
+        if response_id != Gtk.ResponseType.OK:
+            return
+        # Keep the dialog open until the credentials have been verified
+        dialog.stop_emission_by_name("response")
+
+        base_url = self._base_url()
+        if not base_url:
+            _show_error(self, "Server URL is required.")
+            return
+
+        if self._kind == "gitea":
+            token = self._token_entry.get_text().strip()
+            if not token:
+                _show_error(self, "Access token is required.")
+                return
+
+            def _verify():
+                return token, GiteaAPI(base_url).get_username(token)
+        else:
+            email = self._email_entry.get_text().strip()
+            password = self._password_entry.get_text()
+            if not email or not password:
+                _show_error(self, "Email and password are required.")
+                return
+
+            def _verify():
+                return MindBlownAPI(base_url).login(email, password)
+
+        self._ok_btn.set_sensitive(False)
+        self._ok_btn.set_label("Logging in...")
+
+        def _run():
+            try:
+                GLib.idle_add(self._on_verified, base_url, *_verify())
+            except Exception as e:
+                GLib.idle_add(self._on_failed, str(e))
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _on_verified(self, base_url, token, username):
+        cfg = config.load()
+        account = config.add_account(cfg, self._kind, base_url, username)
+        config.save(cfg)
+        store_token(account["id"], token)
+        self.response(Gtk.ResponseType.OK)
+
+    def _on_failed(self, msg):
+        self._ok_btn.set_sensitive(True)
+        self._ok_btn.set_label("Log In")
+        _show_error(self, f"Login failed:\n{msg}")
 
 
 class RepoConfigDialog(Gtk.Dialog):
@@ -325,7 +546,7 @@ class RepoConfigDialog(Gtk.Dialog):
 
     def __init__(self, parent, app, repo):
         super().__init__(
-            title=f"Configure {repo['owner']}/{repo['name']}",
+            title=f"Configure {config.repo_display_name(parent._cfg, repo)}",
             transient_for=parent,
             modal=True,
         )
@@ -333,6 +554,7 @@ class RepoConfigDialog(Gtk.Dialog):
         self.set_resizable(False)
         self._app = app
         self._repo = repo
+        self._parent_cfg = parent._cfg
 
         box = self.get_content_area()
         box.set_spacing(10)
@@ -412,9 +634,10 @@ class RepoConfigDialog(Gtk.Dialog):
         self._repo["color"] = color
 
     def _fetch_labels(self):
-        token = get_token()
-        if not token:
+        client = self._app.client(self._repo["account"], self._parent_cfg)
+        if not client:
             return
+        api, token = client
 
         self._labels_spinner.show()
         self._labels_spinner.start()
@@ -423,7 +646,7 @@ class RepoConfigDialog(Gtk.Dialog):
         name = self._repo["name"]
 
         def _fetch():
-            return self._app.api.list_labels(token, owner, name)
+            return api.list_labels(token, owner, name)
 
         def _on_labels(labels):
             self._labels_spinner.stop()

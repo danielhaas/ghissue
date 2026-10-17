@@ -8,8 +8,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, Gtk
 
 from .. import config
-from ..api import GitHubAPI, Label
-from ..keyring import get_token
+from ..api import Label
 from ..queue import IssueQueue, QueuedIssue
 
 import requests
@@ -41,7 +40,7 @@ def _label_css(color_hex: str) -> str:
 
 
 class CreateIssueDialog(Gtk.Dialog):
-    def __init__(self, app, owner: str, repo: str):
+    def __init__(self, app, repo_cfg: dict):
         super().__init__(
             title="Create Issue",
             transient_for=None,
@@ -49,17 +48,13 @@ class CreateIssueDialog(Gtk.Dialog):
         )
         self.set_default_size(520, 480)
         self._app = app
-        self._owner = owner
-        self._repo = repo
+        self._account = repo_cfg["account"]
+        self._owner = repo_cfg["owner"]
+        self._repo = repo_cfg["name"]
         self._labels: list[Label] = []
         self._label_buttons: list[tuple[Gtk.ToggleButton, Label]] = []
 
-        # Look up default labels from config
-        cfg = config.load()
-        repo_cfg = config.find_repo(cfg, owner, repo)
-        self._default_labels = set(
-            repo_cfg.get("default_labels", []) if repo_cfg else []
-        )
+        self._default_labels = set(repo_cfg.get("default_labels", []))
 
         box = self.get_content_area()
         box.set_spacing(8)
@@ -69,7 +64,7 @@ class CreateIssueDialog(Gtk.Dialog):
         box.set_margin_bottom(12)
 
         # Header: repo info + queue count
-        header_parts = [f"{owner}/{repo}"]
+        header_parts = [config.repo_display_name(app.cfg, repo_cfg)]
         n = self._app.queue.count()
         if n > 0:
             header_parts.append(f"({n} pending)")
@@ -124,16 +119,17 @@ class CreateIssueDialog(Gtk.Dialog):
         self._fetch_labels()
 
     def _fetch_labels(self):
-        token = get_token()
-        if not token:
+        client = self._app.client(self._account)
+        if not client:
             self._labels_header.hide()
             return
+        api, token = client
 
         self._labels_spinner.show()
         self._labels_spinner.start()
 
         def _fetch():
-            return self._app.api.list_labels(token, self._owner, self._repo)
+            return api.list_labels(token, self._owner, self._repo)
 
         def _on_labels(labels):
             self._labels_spinner.stop()
@@ -218,11 +214,12 @@ class CreateIssueDialog(Gtk.Dialog):
         body = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), True).strip()
         labels = self._get_selected_labels()
 
-        token = get_token()
-        if not token:
-            self._show_error("Not logged in.")
+        client = self._app.client(self._account)
+        if not client:
+            self._show_error(f"Not logged in to {self._account}.")
             dialog.stop_emission_by_name("response")
             return
+        api, token = client
 
         owner = self._owner
         name = self._repo
@@ -236,12 +233,12 @@ class CreateIssueDialog(Gtk.Dialog):
 
         def _submit():
             try:
-                result = self._app.api.create_issue(token, owner, name, title, body, labels)
+                result = api.create_issue(token, owner, name, title, body, labels)
                 GLib.idle_add(self._on_submit_success, result)
             except requests.ConnectionError:
                 issue = QueuedIssue(
                     title=title, body=body, labels=labels,
-                    owner=owner, repo=name,
+                    owner=owner, repo=name, account=self._account,
                 )
                 self._app.queue.enqueue(issue)
                 n = self._app.queue.count()
@@ -252,7 +249,9 @@ class CreateIssueDialog(Gtk.Dialog):
         threading.Thread(target=_submit, daemon=True).start()
 
     def _on_submit_success(self, result):
-        self._app._notify("Issue created", f"#{result.number}: {result.title}")
+        self._app._notify(
+            "Issue created" if result.number else "Node created", result.summary,
+        )
         self.response(Gtk.ResponseType.CLOSE)
 
     def _on_submit_queued(self, n):

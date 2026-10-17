@@ -15,8 +15,8 @@ gi.require_version("Notify", "0.7")
 from gi.repository import Gio, GLib, Gtk, Notify
 
 from . import config
-from .api import GitHubAPI
-from .keyring import get_token, is_logged_in
+from .api import GitHubAPI, client_for
+from .keyring import get_token
 from .network import NetworkMonitor
 from .queue import IssueQueue
 
@@ -27,6 +27,11 @@ _DBUS_XML = """
 <node>
   <interface name="com.github.ghissue">
     <method name="CreateIssue">
+      <arg type="s" name="owner" direction="in"/>
+      <arg type="s" name="repo" direction="in"/>
+    </method>
+    <method name="CreateIssueFor">
+      <arg type="s" name="account" direction="in"/>
       <arg type="s" name="owner" direction="in"/>
       <arg type="s" name="repo" direction="in"/>
     </method>
@@ -58,7 +63,7 @@ def run_in_background(func, callback=None):
 class Application:
     def __init__(self):
         Notify.init("ghissue")
-        self.api = GitHubAPI()
+        self.api = GitHubAPI()  # device-flow login; per-account clients via client()
         self.queue = IssueQueue()
         self.cfg = config.load()
         self._connection = None
@@ -79,6 +84,14 @@ class Application:
             None,
             None,
         )
+
+    def client(self, account_id: str, cfg: dict = None):
+        """Return (api, token) for a configured, logged-in account, or None."""
+        account = config.find_account(cfg or self.cfg, account_id)
+        token = get_token(account_id) if account else None
+        if not token:
+            return None
+        return client_for(account), token
 
     # ── DBus ──
 
@@ -107,9 +120,12 @@ class Application:
                              interface_name, method_name, parameters,
                              invocation):
         if method_name == "CreateIssue":
-            owner = parameters.unpack()[0]
-            repo = parameters.unpack()[1]
-            GLib.idle_add(self._on_create_issue, owner, repo)
+            owner, repo = parameters.unpack()
+            GLib.idle_add(self._on_create_issue, None, owner, repo)
+            invocation.return_value(None)
+        elif method_name == "CreateIssueFor":
+            account, owner, repo = parameters.unpack()
+            GLib.idle_add(self._on_create_issue, account, owner, repo)
             invocation.return_value(None)
         elif method_name == "OpenSettings":
             GLib.idle_add(self._on_settings)
@@ -117,7 +133,8 @@ class Application:
         elif method_name == "GetRepos":
             repos = config.get_repos(self.cfg)
             payload = json.dumps([
-                {"owner": r["owner"], "name": r["name"], "color": r.get("color", "#238636")}
+                {"account": r["account"], "owner": r["owner"], "name": r["name"],
+                 "color": r.get("color", "#238636")}
                 for r in repos
             ])
             invocation.return_value(GLib.Variant("(s)", (payload,)))
@@ -135,15 +152,16 @@ class Application:
 
     # ── Actions ──
 
-    def _on_create_issue(self, owner, repo):
-        if not is_logged_in():
-            self._notify("ghissue", "Please log in first in Settings.")
-            return
-        if not config.find_repo(self.cfg, owner, repo):
+    def _on_create_issue(self, account, owner, repo):
+        repo_cfg = config.find_repo(self.cfg, account, owner, repo)
+        if not repo_cfg:
             self._notify("ghissue", "Repository not found in configuration.")
             return
+        if not get_token(repo_cfg["account"]):
+            self._notify("ghissue", f"Please log in to {repo_cfg['account']} in Settings.")
+            return
         from .dialogs.create_issue import CreateIssueDialog
-        dlg = CreateIssueDialog(self, owner, repo)
+        dlg = CreateIssueDialog(self, repo_cfg)
         dlg.run()
         dlg.destroy()
 
@@ -168,12 +186,8 @@ class Application:
             self._try_drain()
 
     def _try_drain(self):
-        token = get_token()
-        if not token:
-            return
-
         def _drain():
-            return self.queue.drain(self.api, token)
+            return self.queue.drain(self.client)
 
         def _on_drained(result):
             if result.submitted > 0:
@@ -219,7 +233,7 @@ def _send_dbus_call(method, params=None, reply_type=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="ghissue — quick GitHub issue creator")
+    parser = argparse.ArgumentParser(description="ghissue — quick issue creator for GitHub, Gitea and MindBlown")
     parser.add_argument(
         "--create",
         action="store_true",
@@ -233,8 +247,8 @@ def main():
         repo = config.get_repo(cfg)
         if repo:
             _send_dbus_call(
-                "CreateIssue",
-                GLib.Variant("(ss)", (repo[0], repo[1])),
+                "CreateIssueFor",
+                GLib.Variant("(sss)", (repo["account"], repo["owner"], repo["name"])),
             )
         else:
             print("ghissue: no repository configured", file=sys.stderr)

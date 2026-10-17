@@ -1,4 +1,7 @@
-"""GitHub API client using requests."""
+"""Forge API clients (GitHub, Gitea, MindBlown) using requests.
+
+All three expose the same surface: list_repos, list_labels, create_issue.
+"""
 
 from dataclasses import dataclass, field
 import requests
@@ -40,9 +43,13 @@ class Repo:
 
 @dataclass
 class IssueResponse:
-    number: int
+    number: int | None  # None for MindBlown nodes
     html_url: str
     title: str
+
+    @property
+    def summary(self) -> str:
+        return f"#{self.number}: {self.title}" if self.number else self.title
 
 
 class OAuthPendingError(Exception):
@@ -61,13 +68,18 @@ class OAuthDeniedError(Exception):
     """User denied access."""
 
 
+def _new_session() -> requests.Session:
+    session = requests.Session()
+    session.headers.update({
+        "Accept": "application/json",
+        "User-Agent": "ghissue-desktop/1.0",
+    })
+    return session
+
+
 class GitHubAPI:
     def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update({
-            "Accept": "application/json",
-            "User-Agent": "ghissue-desktop/1.0",
-        })
+        self.session = _new_session()
 
     def _auth_headers(self, token: str) -> dict:
         return {"Authorization": f"token {token}"}
@@ -186,3 +198,202 @@ class GitHubAPI:
                 ))
             page += 1
         return repos
+
+
+class GiteaAPI:
+    """Gitea REST API v1, authenticated with a personal access token."""
+
+    _PAGE_SIZE = 50  # Gitea's default MAX_RESPONSE_ITEMS
+
+    def __init__(self, base_url: str):
+        self.base_url = base_url.rstrip("/")
+        self.api_base = f"{self.base_url}/api/v1"
+        self.session = _new_session()
+
+    def _auth_headers(self, token: str) -> dict:
+        return {"Authorization": f"token {token}"}
+
+    def _get_paged(self, token: str, path: str, params: dict = None) -> list[dict]:
+        items = []
+        page = 1
+        while True:
+            resp = self.session.get(
+                f"{self.api_base}{path}",
+                params={**(params or {}), "limit": self._PAGE_SIZE, "page": page},
+                headers=self._auth_headers(token),
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            items.extend(data)
+            if len(data) < self._PAGE_SIZE:
+                return items
+            page += 1
+
+    def get_username(self, token: str) -> str:
+        """Validate *token* and return the login it belongs to."""
+        resp = self.session.get(
+            f"{self.api_base}/user", headers=self._auth_headers(token),
+        )
+        resp.raise_for_status()
+        return resp.json()["login"]
+
+    def token_settings_url(self) -> str:
+        return f"{self.base_url}/user/settings/applications"
+
+    def _raw_labels(self, token: str, owner: str, repo: str) -> list[dict]:
+        labels = self._get_paged(token, f"/repos/{owner}/{repo}/labels")
+        # Org-wide labels are also valid on the org's repos
+        try:
+            labels += self._get_paged(token, f"/orgs/{owner}/labels")
+        except requests.HTTPError as e:
+            if e.response is None or e.response.status_code != 404:
+                raise
+        return labels
+
+    def create_issue(
+        self, token: str, owner: str, repo: str,
+        title: str, body: str, labels: list[str],
+    ) -> IssueResponse:
+        payload = {"title": title, "body": body}
+        if labels:
+            # Gitea wants label IDs, not names
+            ids = {l["name"]: l["id"] for l in self._raw_labels(token, owner, repo)}
+            payload["labels"] = [ids[name] for name in labels if name in ids]
+        resp = self.session.post(
+            f"{self.api_base}/repos/{owner}/{repo}/issues",
+            json=payload,
+            headers=self._auth_headers(token),
+        )
+        resp.raise_for_status()
+        d = resp.json()
+        return IssueResponse(
+            number=d["number"],
+            html_url=d["html_url"],
+            title=d["title"],
+        )
+
+    def list_labels(self, token: str, owner: str, repo: str) -> list[Label]:
+        return [
+            Label(
+                name=item["name"],
+                color=item["color"].lstrip("#"),
+                description=item.get("description", ""),
+            )
+            for item in self._raw_labels(token, owner, repo)
+        ]
+
+    def list_repos(self, token: str) -> list[Repo]:
+        return [
+            Repo(
+                owner=item["owner"]["login"],
+                name=item["name"],
+                full_name=item["full_name"],
+            )
+            for item in self._get_paged(token, "/user/repos")
+            if item.get("has_issues", True) and not item.get("archived", False)
+        ]
+
+
+class MindBlownAPI:
+    """MindBlown REST API. Maps stand in for repos, nodes for issues, tags for labels.
+
+    Repo.owner carries the map id and Repo.name the map name. New nodes are
+    added under the map's root node.
+    """
+
+    _TAG_COLOR = "8b949e"  # tags have no color of their own
+
+    def __init__(self, base_url: str):
+        self.base_url = base_url.rstrip("/")
+        self.session = _new_session()
+
+    def _auth_headers(self, token: str) -> dict:
+        return {"Authorization": f"Bearer {token}"}
+
+    def _get_map(self, token: str, map_id: str) -> dict:
+        resp = self.session.get(
+            f"{self.base_url}/api/maps/{map_id}",
+            headers=self._auth_headers(token),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def login(self, email: str, password: str) -> tuple[str, str]:
+        """Exchange credentials for a long-lived (1 year) token.
+
+        Returns (token, display name). The password is not kept.
+        """
+        resp = self.session.post(
+            f"{self.base_url}/api/auth/login",
+            json={"email": email, "password": password},
+        )
+        resp.raise_for_status()
+        d = resp.json()
+        resp = self.session.post(
+            f"{self.base_url}/api/auth/long-lived-token",
+            headers=self._auth_headers(d["token"]),
+        )
+        resp.raise_for_status()
+        return resp.json()["token"], d["user"].get("name") or d["user"]["email"]
+
+    def create_issue(
+        self, token: str, owner: str, repo: str,
+        title: str, body: str, labels: list[str],
+    ) -> IssueResponse:
+        map_id = owner
+        root_id = self._get_map(token, map_id)["map"]["rootNodeId"]
+        resp = self.session.post(
+            f"{self.base_url}/api/maps/{map_id}/nodes",
+            json={"parentId": root_id, "text": title},
+            headers=self._auth_headers(token),
+        )
+        resp.raise_for_status()
+        node = resp.json()
+
+        # Node creation ignores description and tags; set them afterwards
+        fields = {}
+        if body:
+            fields["description"] = body
+        if labels:
+            fields["tags"] = labels
+        if fields:
+            resp = self.session.put(
+                f"{self.base_url}/api/maps/{map_id}/nodes/{node['id']}",
+                json=fields,
+                headers=self._auth_headers(token),
+            )
+            resp.raise_for_status()
+
+        return IssueResponse(
+            number=None,
+            html_url=f"{self.base_url}/?map={map_id}",
+            title=node["text"],
+        )
+
+    def list_labels(self, token: str, owner: str, repo: str) -> list[Label]:
+        nodes = self._get_map(token, owner)["nodes"]
+        tags = sorted({t for n in nodes for t in n.get("tags", [])}, key=str.lower)
+        return [Label(name=t, color=self._TAG_COLOR) for t in tags]
+
+    def list_repos(self, token: str) -> list[Repo]:
+        resp = self.session.get(
+            f"{self.base_url}/api/maps",
+            headers=self._auth_headers(token),
+        )
+        resp.raise_for_status()
+        return [
+            Repo(owner=m["id"], name=m["name"], full_name=m["name"])
+            for m in resp.json()
+        ]
+
+
+def client_for(account: dict):
+    """Return the API client for a config account entry."""
+    kind = account["kind"]
+    if kind == "github":
+        return GitHubAPI()
+    if kind == "gitea":
+        return GiteaAPI(account["base_url"])
+    if kind == "mindblown":
+        return MindBlownAPI(account["base_url"])
+    raise ValueError(f"Unknown account kind: {kind}")
