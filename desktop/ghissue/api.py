@@ -68,8 +68,17 @@ class OAuthDeniedError(Exception):
     """User denied access."""
 
 
+_TIMEOUT = 20  # seconds; requests has no default and would wait forever
+
+
+class _TimeoutSession(requests.Session):
+    def request(self, *args, **kwargs):
+        kwargs.setdefault("timeout", _TIMEOUT)
+        return super().request(*args, **kwargs)
+
+
 def _new_session() -> requests.Session:
-    session = requests.Session()
+    session = _TimeoutSession()
     session.headers.update({
         "Accept": "application/json",
         "User-Agent": "ghissue-desktop/1.0",

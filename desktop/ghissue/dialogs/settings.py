@@ -426,6 +426,7 @@ class AccountDialog(Gtk.Dialog):
         self.set_default_size(420, -1)
         self.set_resizable(False)
         self._kind = kind
+        self._verified = False
 
         box = self.get_content_area()
         box.set_spacing(8)
@@ -489,7 +490,8 @@ class AccountDialog(Gtk.Dialog):
         webbrowser.open(GiteaAPI(base_url).token_settings_url())
 
     def _on_response(self, dialog, response_id):
-        if response_id != Gtk.ResponseType.OK:
+        # _on_verified closes the dialog with OK; let that one through
+        if response_id != Gtk.ResponseType.OK or self._verified:
             return
         # Keep the dialog open until the credentials have been verified
         dialog.stop_emission_by_name("response")
@@ -533,6 +535,7 @@ class AccountDialog(Gtk.Dialog):
         account = config.add_account(cfg, self._kind, base_url, username)
         config.save(cfg)
         store_token(account["id"], token)
+        self._verified = True
         self.response(Gtk.ResponseType.OK)
 
     def _on_failed(self, msg):
