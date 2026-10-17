@@ -101,7 +101,14 @@ class CreateIssueDialog(Gtk.Dialog):
         self._labels_flow.set_max_children_per_line(10)
         self._labels_flow.set_row_spacing(4)
         self._labels_flow.set_column_spacing(4)
-        box.add(self._labels_flow)
+        # Repos can have dozens of labels; scroll them rather than growing
+        # the dialog past the bottom of the screen.
+        self._labels_scroll = Gtk.ScrolledWindow()
+        self._labels_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self._labels_scroll.set_propagate_natural_height(True)
+        self._labels_scroll.set_max_content_height(140)
+        self._labels_scroll.add(self._labels_flow)
+        box.add(self._labels_scroll)
 
         self._labels_spinner = Gtk.Spinner()
         box.add(self._labels_spinner)
