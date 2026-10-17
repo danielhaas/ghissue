@@ -6,17 +6,29 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
+import android.text.InputType
 import android.view.View
+import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.ghissue.app.databinding.ActivityMainBinding
+import com.ghissue.app.network.Account
 import com.ghissue.app.network.ApiClient
 import com.ghissue.app.network.DeviceCodeRequest
 import com.ghissue.app.network.DeviceTokenRequest
+import com.ghissue.app.network.GiteaClient
+import com.ghissue.app.network.MindBlownClient
+import com.ghissue.app.storage.Forges
 import com.ghissue.app.storage.PrefsStore
+import com.ghissue.app.storage.RepoRef
 import com.ghissue.app.storage.TokenStore
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
+import com.google.android.material.textview.MaterialTextView
+import java.net.URI
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -26,6 +38,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var prefsStore: PrefsStore
     private lateinit var tokenStore: TokenStore
+    private lateinit var forges: Forges
     private var pollJob: Job? = null
 
     companion object {
@@ -40,8 +53,9 @@ class MainActivity : AppCompatActivity() {
 
         prefsStore = PrefsStore(this)
         tokenStore = TokenStore(this)
+        forges = Forges(this)
 
-        Log.d(TAG, "onCreate: isLoggedIn=${tokenStore.isLoggedIn}, hasPendingFlow=${prefsStore.hasPendingDeviceFlow}")
+        Log.d(TAG, "onCreate: isLoggedIn=${tokenStore.isLoggedIn(Account.GITHUB_ID)}, hasPendingFlow=${prefsStore.hasPendingDeviceFlow}")
         loadSettings()
         updateLoginStatus()
 
@@ -50,6 +64,8 @@ class MainActivity : AppCompatActivity() {
         binding.btnLogout.setOnClickListener { logout() }
         binding.btnSelectRepo.setOnClickListener { selectRepo() }
         binding.btnSelectDefaultLabels.setOnClickListener { selectDefaultLabels() }
+        binding.btnAddGitea.setOnClickListener { showAccountDialog(Account.KIND_GITEA, null) }
+        binding.btnAddMindBlown.setOnClickListener { showAccountDialog(Account.KIND_MINDBLOWN, null) }
         binding.btnVoiceSettings.setOnClickListener {
             startActivity(Intent(this, VoiceSettingsActivity::class.java))
         }
@@ -91,10 +107,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateSelectedRepoLabel() {
-        val owner = prefsStore.repoOwner
-        val name = prefsStore.repoName
-        if (owner.isNotBlank() && name.isNotBlank()) {
-            binding.textSelectedRepo.text = "$owner/$name"
+        val repo = prefsStore.defaultRepo
+        if (repo != null) {
+            binding.textSelectedRepo.text = forges.displayName(repo)
             binding.btnSelectRepo.setText(R.string.btn_change_repo)
         } else {
             binding.textSelectedRepo.setText(R.string.no_repo_selected)
@@ -103,17 +118,25 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun selectRepo() {
-        val token = tokenStore.accessToken ?: return
         lifecycleScope.launch {
             try {
-                val repos = ApiClient.gitHubApi.listRepos("Bearer $token")
-                val repoNames = repos.map { it.fullName }.toTypedArray()
+                val (repos, errors) = forges.allRepos()
+                if (errors.isNotEmpty()) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        getString(R.string.error_loading_repos, errors.joinToString("\n")),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+                if (repos.isEmpty()) return@launch
+                val repoNames = repos.map { (account, repo) ->
+                    forges.displayName(RepoRef(account.id, repo.owner, repo.name))
+                }.toTypedArray()
                 MaterialAlertDialogBuilder(this@MainActivity)
                     .setTitle(R.string.select_repo_title)
                     .setItems(repoNames) { _, which ->
-                        val selected = repos[which]
-                        prefsStore.repoOwner = selected.owner.login
-                        prefsStore.repoName = selected.name
+                        val (account, selected) = repos[which]
+                        prefsStore.defaultRepo = RepoRef(account.id, selected.owner, selected.name)
                         prefsStore.defaultLabels = emptySet()
                         updateSelectedRepoLabel()
                         updateDefaultLabelsDisplay()
@@ -130,18 +153,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun selectDefaultLabels() {
-        if (prefsStore.repoOwner.isBlank() || prefsStore.repoName.isBlank()) {
+        val repo = prefsStore.defaultRepo
+        if (repo == null) {
             Toast.makeText(this, R.string.error_select_repo_first, Toast.LENGTH_SHORT).show()
             return
         }
-        val token = tokenStore.accessToken ?: return
+        val client = forges.client(repo.account) ?: return
         lifecycleScope.launch {
             try {
-                val labels = ApiClient.gitHubApi.listLabels(
-                    token = "Bearer $token",
-                    owner = prefsStore.repoOwner,
-                    repo = prefsStore.repoName
-                )
+                val labels = client.listLabels(repo.owner, repo.name)
                 val labelNames = labels.map { it.name }.toTypedArray()
                 val currentDefaults = prefsStore.defaultLabels
                 val checked = BooleanArray(labelNames.size) { labelNames[it] in currentDefaults }
@@ -305,17 +325,176 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun logout() {
-        tokenStore.clear()
+        tokenStore.accessToken = null
         updateLoginStatus()
     }
 
     private fun updateLoginStatus() {
-        val loggedIn = tokenStore.isLoggedIn
+        val loggedIn = tokenStore.isLoggedIn(Account.GITHUB_ID)
         binding.textLoginStatus.setText(
             if (loggedIn) R.string.status_logged_in else R.string.status_not_logged_in
         )
         binding.btnLogin.visibility = if (loggedIn) View.GONE else View.VISIBLE
         binding.btnLogout.visibility = if (loggedIn) View.VISIBLE else View.GONE
-        binding.groupRepoSection.visibility = if (loggedIn) View.VISIBLE else View.GONE
+        rebuildAccountRows()
+        val anyLoggedIn = forges.loggedInAccounts().isNotEmpty()
+        binding.groupRepoSection.visibility = if (anyLoggedIn) View.VISIBLE else View.GONE
+        updateSelectedRepoLabel()
+    }
+
+    // ── Gitea / MindBlown accounts ──
+
+    private fun rebuildAccountRows() {
+        val container = binding.accountsContainer
+        container.removeAllViews()
+        for (account in prefsStore.accounts.filter { it.kind != Account.KIND_GITHUB }) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+            }
+            val status = if (tokenStore.isLoggedIn(account.id)) {
+                if (account.username.isNotBlank()) getString(R.string.account_status_as, account.username)
+                else getString(R.string.status_logged_in)
+            } else getString(R.string.account_status_logged_out)
+            val label = MaterialTextView(this).apply {
+                text = "${account.title} · ${account.id}\n$status"
+                setOnClickListener { showAccountDialog(account.kind, account) }
+            }
+            row.addView(label, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            val remove = MaterialButton(
+                this, null, com.google.android.material.R.attr.borderlessButtonStyle
+            ).apply {
+                setText(R.string.btn_remove)
+                setOnClickListener { confirmRemoveAccount(account) }
+            }
+            row.addView(remove)
+            container.addView(row)
+        }
+    }
+
+    private fun confirmRemoveAccount(account: Account) {
+        MaterialAlertDialogBuilder(this)
+            .setMessage(getString(R.string.remove_account_confirm, account.id))
+            .setPositiveButton(R.string.btn_remove) { _, _ ->
+                tokenStore.setToken(account.id, null)
+                prefsStore.removeAccount(account.id)
+                updateLoginStatus()
+                updateDefaultLabelsDisplay()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun textField(hint: Int, inputType: Int, value: String = ""): Pair<TextInputLayout, TextInputEditText> {
+        val layout = TextInputLayout(this).apply { this.hint = getString(hint) }
+        val edit = TextInputEditText(layout.context).apply {
+            this.inputType = inputType
+            setText(value)
+        }
+        layout.addView(edit)
+        return layout to edit
+    }
+
+    /**
+     * Gitea takes a personal access token; MindBlown takes email/password,
+     * exchanged for a long-lived token (the password is not stored).
+     */
+    private fun showAccountDialog(kind: String, existing: Account?) {
+        val title = if (kind == Account.KIND_GITEA) "Gitea" else "MindBlown"
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = resources.getDimensionPixelSize(R.dimen.activity_margin)
+            setPadding(pad, pad / 2, pad, 0)
+        }
+        val (urlLayout, urlEdit) = textField(
+            R.string.hint_server_url, InputType.TYPE_TEXT_VARIATION_URI, existing?.baseUrl ?: "https://"
+        )
+        urlEdit.isEnabled = existing == null
+        content.addView(urlLayout)
+
+        val secretFields = if (kind == Account.KIND_GITEA) {
+            val (tokenLayout, tokenEdit) = textField(
+                R.string.hint_access_token,
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            )
+            content.addView(tokenLayout)
+            content.addView(MaterialTextView(this).apply { setText(R.string.gitea_token_scopes) })
+            content.addView(MaterialButton(
+                this, null, com.google.android.material.R.attr.borderlessButtonStyle
+            ).apply {
+                setText(R.string.btn_create_token)
+                setOnClickListener {
+                    val url = normalizeBaseUrl(urlEdit.text.toString()) ?: return@setOnClickListener
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(GiteaClient.tokenSettingsUrl(url))))
+                }
+            })
+            listOf(tokenEdit)
+        } else {
+            val (emailLayout, emailEdit) = textField(
+                R.string.hint_email, InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+            )
+            val (pwLayout, pwEdit) = textField(
+                R.string.hint_password,
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            )
+            content.addView(emailLayout)
+            content.addView(pwLayout)
+            listOf(emailEdit, pwEdit)
+        }
+
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(
+                if (existing != null) getString(R.string.relogin_account_title, existing.id)
+                else getString(R.string.add_account_title, title)
+            )
+            .setView(content)
+            .setPositiveButton(R.string.btn_log_in, null)
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+
+        dialog.setOnShowListener {
+            val loginBtn = dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)
+            // Keep the dialog open until the credentials have been verified
+            loginBtn.setOnClickListener {
+                val baseUrl = normalizeBaseUrl(urlEdit.text.toString())
+                val values = secretFields.map { it.text.toString().trim() }
+                if (baseUrl == null || values.any { it.isEmpty() }) {
+                    Toast.makeText(this, R.string.error_fields_required, Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                loginBtn.isEnabled = false
+                loginBtn.setText(R.string.logging_in)
+                lifecycleScope.launch {
+                    try {
+                        val (token, username) = if (kind == Account.KIND_GITEA) {
+                            values[0] to GiteaClient(baseUrl, values[0]).username()
+                        } else {
+                            MindBlownClient.login(baseUrl, values[0], values[1])
+                        }
+                        val account = Account(URI(baseUrl).host.lowercase(), kind, baseUrl, username)
+                        prefsStore.saveAccount(account)
+                        tokenStore.setToken(account.id, token)
+                        dialog.dismiss()
+                        updateLoginStatus()
+                    } catch (e: Exception) {
+                        loginBtn.isEnabled = true
+                        loginBtn.setText(R.string.btn_log_in)
+                        Toast.makeText(
+                            this@MainActivity,
+                            getString(R.string.error_login_failed, e.message),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun normalizeBaseUrl(text: String): String? {
+        var url = text.trim().trimEnd('/')
+        if (url.isEmpty() || url == "https:" || url == "http:") return null
+        if ("://" !in url) url = "https://$url"
+        return url.takeIf { runCatching { URI(it).host }.getOrNull() != null }
     }
 }

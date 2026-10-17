@@ -2,8 +2,8 @@
 <resources>
     <string name="app_name">ghissue</string>
     <string name="widget_name">Create Issue</string>
-    <string name="widget_description">Tap to create a GitHub issue</string>
-    <string name="widget_description_wide">Tap to create a GitHub issue (wide)</string>
+    <string name="widget_description">Tap to create an issue</string>
+    <string name="widget_description_wide">Tap to create an issue (wide)</string>
     <string name="widget_name_wide">Create Issue (wide)</string>
 
     <!-- Settings -->
@@ -24,6 +24,28 @@
     <string name="oauth_section">OAuth App</string>
     <string name="repo_section">Repository</string>
 
+    <!-- Accounts -->
+    <string name="github_section">GitHub</string>
+    <string name="other_accounts_section">Gitea &amp; MindBlown</string>
+    <string name="btn_add_gitea">Add Gitea</string>
+    <string name="btn_add_mindblown">Add MindBlown</string>
+    <string name="add_account_title">Add %1$s Account</string>
+    <string name="relogin_account_title">Log In to %1$s</string>
+    <string name="hint_server_url">Server URL</string>
+    <string name="hint_access_token">Access token</string>
+    <string name="hint_email">Email</string>
+    <string name="hint_password">Password</string>
+    <string name="gitea_token_scopes">Scopes needed: read:user, read:repository, write:issue (and read:organization for org labels).</string>
+    <string name="btn_create_token">Create Token in Browser</string>
+    <string name="btn_log_in">Log In</string>
+    <string name="btn_remove">Remove</string>
+    <string name="account_status_as">as %1$s</string>
+    <string name="account_status_logged_out">not logged in</string>
+    <string name="remove_account_confirm">Remove %1$s?</string>
+    <string name="error_fields_required">Please fill in all fields</string>
+    <string name="error_login_failed">Login failed: %1$s</string>
+    <string name="logging_in">Logging in…</string>
+
     <!-- Create Issue -->
     <string name="create_issue_title">New Issue</string>
     <string name="hint_issue_title">Title</string>
@@ -40,6 +62,27 @@
     <string name="error_not_configured">Please configure the app first</string>
     <string name="error_not_logged_in">Please log in first</string>
     <string name="error_creating_issue">Failed to create issue: %1$s</string>
+
+    <!-- Refine (MindBlown ticket intake) -->
+    <string name="btn_refine">Refine</string>
+    <string name="btn_create_anyway">Create anyway</string>
+    <string name="btn_comment">Comment</string>
+    <string name="btn_reopen">Reopen</string>
+    <string name="btn_nothing_to_do">Nothing to do</string>
+    <string name="refine_working">Asking MindBlown…</string>
+    <string name="refine_done">Refined. Edit if needed, then submit.</string>
+    <string name="refine_step_limit">MindBlown ran out of steps; try Refine again.</string>
+    <string name="refine_failed">Refine failed: %1$s</string>
+    <string name="refine_empty">Write something to refine first</string>
+    <string name="verdict_covered">An existing ticket already covers this:</string>
+    <string name="verdict_extends">This adds to an existing ticket:</string>
+    <string name="verdict_regression">This looks like a regression of:</string>
+    <string name="verdict_similar">Similar tickets:</string>
+    <string name="existing_commented">Commented on %1$s</string>
+    <string name="existing_reopened">Reopened %1$s</string>
+    <string name="existing_nothing">Nothing created — an existing ticket covers this</string>
+    <string name="node_created">Node created</string>
+    <string name="action_failed">Failed: %1$s</string>
 
     <!-- OAuth -->
     <string name="oauth_error">OAuth failed: %1$s</string>

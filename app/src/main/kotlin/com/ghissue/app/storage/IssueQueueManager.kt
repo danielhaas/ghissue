@@ -3,7 +3,7 @@ package com.ghissue.app.storage
 import android.content.Context
 import android.content.SharedPreferences
 import com.ghissue.app.network.ApiClient
-import com.ghissue.app.network.CreateIssueRequest
+import com.ghissue.app.network.ForgeException
 import com.ghissue.app.network.QueuedIssue
 import com.squareup.moshi.Types
 import java.io.IOException
@@ -38,24 +38,32 @@ class IssueQueueManager(context: Context) {
 
     fun count(): Int = getAll().size
 
-    suspend fun drainQueue(tokenStore: TokenStore): DrainResult {
+    /**
+     * Submit queued issues. A network error stops the drain; a 401 (or a
+     * logged-out account) keeps that account's items queued and moves on.
+     */
+    suspend fun drainQueue(forges: Forges): DrainResult {
         var submitted = 0
         var failed = 0
         var stopReason: String? = null
+        val unauthorized = mutableSetOf<String>()
 
         val queue = getAll()
         for (issue in queue) {
+            if (issue.account in unauthorized) continue
+            val client = forges.client(issue.account)
+            if (client == null) {
+                unauthorized += issue.account
+                stopReason = "auth"
+                continue
+            }
             try {
-                val token = "Bearer ${tokenStore.accessToken}"
-                ApiClient.gitHubApi.createIssue(
-                    token = token,
+                client.createIssue(
                     owner = issue.owner,
                     repo = issue.repo,
-                    request = CreateIssueRequest(
-                        title = issue.title,
-                        body = issue.body,
-                        labels = issue.labels
-                    )
+                    title = issue.title,
+                    body = issue.body,
+                    labels = issue.labels.orEmpty()
                 )
                 remove(issue.id)
                 submitted++
@@ -63,18 +71,19 @@ class IssueQueueManager(context: Context) {
                 stopReason = "network"
                 failed++
                 break
-            } catch (e: retrofit2.HttpException) {
-                when (e.code()) {
-                    401 -> {
-                        stopReason = "auth"
-                        failed++
-                        break
-                    }
-                    else -> {
-                        remove(issue.id)
-                        failed++
-                    }
+            } catch (e: Exception) {
+                val code = when (e) {
+                    is retrofit2.HttpException -> e.code()
+                    is ForgeException -> e.code
+                    else -> 0
                 }
+                if (code == 401) {
+                    unauthorized += issue.account
+                    stopReason = "auth"
+                } else {
+                    remove(issue.id)
+                }
+                failed++
             }
         }
 

@@ -16,7 +16,7 @@
         <com.google.android.material.textview.MaterialTextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/oauth_section"
+            android:text="@string/github_section"
             android:textAppearance="?attr/textAppearanceTitleMedium"
             android:layout_marginBottom="@dimen/field_spacing" />
 
@@ -116,6 +116,50 @@
             android:text="@string/btn_logout"
             android:visibility="gone"
             style="@style/Widget.Material3.Button.OutlinedButton" />
+
+        <!-- Gitea / MindBlown accounts -->
+
+        <com.google.android.material.divider.MaterialDivider
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/section_spacing"
+            android:layout_marginBottom="@dimen/section_spacing" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/other_accounts_section"
+            android:textAppearance="?attr/textAppearanceTitleMedium"
+            android:layout_marginBottom="@dimen/field_spacing" />
+
+        <LinearLayout
+            android:id="@+id/accountsContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnAddGitea"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="@dimen/field_spacing"
+                android:text="@string/btn_add_gitea"
+                style="@style/Widget.Material3.Button.TonalButton" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnAddMindBlown"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:text="@string/btn_add_mindblown"
+                style="@style/Widget.Material3.Button.TonalButton" />
+        </LinearLayout>
 
         <!-- Stage 2: Repository (visible only when logged in) -->
 

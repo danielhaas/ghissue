@@ -13,11 +13,13 @@ object ApiClient {
         .addLast(KotlinJsonAdapterFactory())
         .build()
 
+    // No bodies: MindBlown login sends a password, responses carry tokens
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
-        level = HttpLoggingInterceptor.Level.BODY
+        level = HttpLoggingInterceptor.Level.BASIC
+        redactHeader("Authorization")
     }
 
-    private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
+    val okHttpClient: OkHttpClient = OkHttpClient.Builder()
         .addInterceptor(loggingInterceptor)
         .build()
 

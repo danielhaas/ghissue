@@ -8,8 +8,8 @@ import android.os.Looper
 import android.widget.Toast
 import com.ghissue.app.speech.WakeWordService
 import com.ghissue.app.storage.IssueQueueManager
+import com.ghissue.app.storage.Forges
 import com.ghissue.app.storage.PrefsStore
-import com.ghissue.app.storage.TokenStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -36,8 +36,7 @@ class GhIssueApp : Application() {
             override fun onAvailable(network: Network) {
                 if (issueQueueManager.count() == 0) return
                 appScope.launch {
-                    val tokenStore = TokenStore(this@GhIssueApp)
-                    val result = issueQueueManager.drainQueue(tokenStore)
+                    val result = issueQueueManager.drainQueue(Forges(this@GhIssueApp))
                     if (result.submitted > 0) {
                         mainHandler.post {
                             Toast.makeText(

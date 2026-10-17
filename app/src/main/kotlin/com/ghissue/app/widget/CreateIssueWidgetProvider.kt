@@ -51,7 +51,7 @@ open class CreateIssueWidgetProvider : AppWidgetProvider() {
 
             val prefsStore = PrefsStore(context)
             val widgetRepo = prefsStore.getWidgetRepo(widgetId)
-            val repoLabel = widgetRepo?.second
+            val repoLabel = widgetRepo?.name
                 ?: prefsStore.repoName.ifBlank { null }
                 ?: ""
 

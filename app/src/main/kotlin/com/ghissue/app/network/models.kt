@@ -75,5 +75,7 @@ data class QueuedIssue(
     @Json(name = "title") val title: String,
     @Json(name = "body") val body: String? = null,
     @Json(name = "labels") val labels: List<String>? = null,
-    @Json(name = "created_at") val createdAt: Long
+    @Json(name = "created_at") val createdAt: Long,
+    // Queued before accounts existed → GitHub
+    @Json(name = "account") val account: String = Account.GITHUB_ID
 )

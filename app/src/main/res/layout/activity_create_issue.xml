@@ -30,6 +30,36 @@
         android:visibility="gone"
         android:layout_marginBottom="@dimen/section_spacing" />
 
+    <!-- MindBlown ticket intake: model note, questions, similar tickets -->
+    <LinearLayout
+        android:id="@+id/refinePanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone"
+        android:layout_marginBottom="@dimen/field_spacing">
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/textRefineStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textIsSelectable="true"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:layout_marginBottom="@dimen/field_spacing" />
+
+        <LinearLayout
+            android:id="@+id/questionsContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        <LinearLayout
+            android:id="@+id/existingContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </LinearLayout>
+
     <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -122,6 +152,16 @@
             android:text="@string/btn_cancel"
             android:textSize="16sp"
             android:layout_marginEnd="@dimen/field_spacing"
+            style="@style/Widget.Material3.Button.TextButton" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnRefine"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/btn_refine"
+            android:textSize="16sp"
+            android:layout_marginEnd="@dimen/field_spacing"
+            android:visibility="gone"
             style="@style/Widget.Material3.Button.TextButton" />
 
         <com.google.android.material.button.MaterialButton

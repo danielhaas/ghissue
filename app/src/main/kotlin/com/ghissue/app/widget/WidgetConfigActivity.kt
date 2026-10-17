@@ -10,9 +10,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.ghissue.app.MainActivity
 import com.ghissue.app.R
-import com.ghissue.app.network.ApiClient
+import com.ghissue.app.storage.Forges
 import com.ghissue.app.storage.PrefsStore
-import com.ghissue.app.storage.TokenStore
+import com.ghissue.app.storage.RepoRef
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
 
@@ -35,8 +35,8 @@ class WidgetConfigActivity : AppCompatActivity() {
             return
         }
 
-        val tokenStore = TokenStore(this)
-        if (!tokenStore.isLoggedIn) {
+        val forges = Forges(this)
+        if (forges.loggedInAccounts().isEmpty()) {
             startActivity(Intent(this, MainActivity::class.java))
             finish()
             return
@@ -44,9 +44,9 @@ class WidgetConfigActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                val token = "Bearer ${tokenStore.accessToken}"
-                val repos = ApiClient.gitHubApi.listRepos(token = token)
+                val (repos, errors) = forges.allRepos()
                 if (repos.isEmpty()) {
+                    if (errors.isNotEmpty()) throw Exception(errors.joinToString("\n"))
                     Toast.makeText(
                         this@WidgetConfigActivity,
                         R.string.no_repos_found,
@@ -56,14 +56,18 @@ class WidgetConfigActivity : AppCompatActivity() {
                     return@launch
                 }
 
-                val displayNames = repos.map { it.fullName }.toTypedArray()
+                val displayNames = repos.map { (account, repo) ->
+                    forges.displayName(RepoRef(account.id, repo.owner, repo.name))
+                }.toTypedArray()
 
                 MaterialAlertDialogBuilder(this@WidgetConfigActivity)
                     .setTitle(R.string.select_repo_title)
                     .setItems(displayNames) { _, which ->
-                        val selected = repos[which]
+                        val (account, selected) = repos[which]
                         val prefsStore = PrefsStore(this@WidgetConfigActivity)
-                        prefsStore.setWidgetRepo(appWidgetId, selected.owner.login, selected.name)
+                        prefsStore.setWidgetRepo(
+                            appWidgetId, RepoRef(account.id, selected.owner, selected.name)
+                        )
                         showColorPicker(prefsStore)
                     }
                     .setOnCancelListener { finish() }
@@ -117,19 +121,14 @@ class WidgetConfigActivity : AppCompatActivity() {
             finalizeWidget()
             return
         }
-        val tokenStore = TokenStore(this)
-        val token = tokenStore.accessToken
-        if (token == null) {
+        val client = Forges(this).client(widgetRepo.account)
+        if (client == null) {
             finalizeWidget()
             return
         }
         lifecycleScope.launch {
             try {
-                val labels = ApiClient.gitHubApi.listLabels(
-                    token = "Bearer $token",
-                    owner = widgetRepo.first,
-                    repo = widgetRepo.second
-                )
+                val labels = client.listLabels(widgetRepo.owner, widgetRepo.name)
                 if (labels.isEmpty()) {
                     finalizeWidget()
                     return@launch

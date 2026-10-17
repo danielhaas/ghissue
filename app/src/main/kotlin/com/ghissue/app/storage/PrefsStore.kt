@@ -2,6 +2,12 @@ package com.ghissue.app.storage
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.ghissue.app.network.Account
+import org.json.JSONArray
+import org.json.JSONObject
+
+/** A configured repo; for MindBlown, owner is the map id and name the map name. */
+data class RepoRef(val account: String, val owner: String, val name: String)
 
 class PrefsStore(context: Context) {
 
@@ -19,6 +25,55 @@ class PrefsStore(context: Context) {
     var repoName: String
         get() = prefs.getString(KEY_REPO_NAME, "") ?: ""
         set(value) = prefs.edit().putString(KEY_REPO_NAME, value).apply()
+
+    /** Account of the default repo; pre-account installs only knew GitHub. */
+    var repoAccount: String
+        get() = prefs.getString(KEY_REPO_ACCOUNT, Account.GITHUB_ID) ?: Account.GITHUB_ID
+        set(value) = prefs.edit().putString(KEY_REPO_ACCOUNT, value).apply()
+
+    var defaultRepo: RepoRef?
+        get() = if (repoOwner.isNotBlank() && repoName.isNotBlank()) {
+            RepoRef(repoAccount, repoOwner, repoName)
+        } else null
+        set(value) {
+            repoAccount = value?.account ?: Account.GITHUB_ID
+            repoOwner = value?.owner ?: ""
+            repoName = value?.name ?: ""
+        }
+
+    // ── Accounts ──
+
+    /** All accounts; the GitHub account always exists (it may be logged out). */
+    var accounts: List<Account>
+        get() {
+            val json = prefs.getString(KEY_ACCOUNTS, null) ?: return listOf(Account.GITHUB)
+            val arr = JSONArray(json)
+            return (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                Account(
+                    o.getString("id"), o.getString("kind"),
+                    o.getString("base_url"), o.optString("username")
+                )
+            }
+        }
+        set(value) {
+            val arr = JSONArray(value.map {
+                JSONObject().put("id", it.id).put("kind", it.kind)
+                    .put("base_url", it.baseUrl).put("username", it.username)
+            })
+            prefs.edit().putString(KEY_ACCOUNTS, arr.toString()).apply()
+        }
+
+    fun findAccount(id: String): Account? = accounts.firstOrNull { it.id == id }
+
+    fun saveAccount(account: Account) {
+        accounts = accounts.filter { it.id != account.id } + account
+    }
+
+    fun removeAccount(id: String) {
+        accounts = accounts.filter { it.id != id }
+        if (repoAccount == id) defaultRepo = null
+    }
 
     val isConfigured: Boolean
         get() = clientId.isNotBlank()
@@ -58,17 +113,19 @@ class PrefsStore(context: Context) {
             .apply()
     }
 
-    fun setWidgetRepo(widgetId: Int, owner: String, name: String) {
+    fun setWidgetRepo(widgetId: Int, repo: RepoRef) {
         prefs.edit()
-            .putString("widget_${widgetId}_repo_owner", owner)
-            .putString("widget_${widgetId}_repo_name", name)
+            .putString("widget_${widgetId}_repo_account", repo.account)
+            .putString("widget_${widgetId}_repo_owner", repo.owner)
+            .putString("widget_${widgetId}_repo_name", repo.name)
             .apply()
     }
 
-    fun getWidgetRepo(widgetId: Int): Pair<String, String>? {
+    fun getWidgetRepo(widgetId: Int): RepoRef? {
         val owner = prefs.getString("widget_${widgetId}_repo_owner", null) ?: return null
         val name = prefs.getString("widget_${widgetId}_repo_name", null) ?: return null
-        return owner to name
+        val account = prefs.getString("widget_${widgetId}_repo_account", null) ?: Account.GITHUB_ID
+        return RepoRef(account, owner, name)
     }
 
     fun setWidgetColor(widgetId: Int, colorInt: Int) {
@@ -99,6 +156,7 @@ class PrefsStore(context: Context) {
 
     fun clearWidgetRepo(widgetId: Int) {
         prefs.edit()
+            .remove("widget_${widgetId}_repo_account")
             .remove("widget_${widgetId}_repo_owner")
             .remove("widget_${widgetId}_repo_name")
             .remove("widget_${widgetId}_color")
@@ -111,6 +169,8 @@ class PrefsStore(context: Context) {
         private const val KEY_CLIENT_ID = "client_id"
         private const val KEY_REPO_OWNER = "repo_owner"
         private const val KEY_REPO_NAME = "repo_name"
+        private const val KEY_REPO_ACCOUNT = "repo_account"
+        private const val KEY_ACCOUNTS = "accounts"
         private const val KEY_PENDING_DEVICE_CODE = "pending_device_code"
         private const val KEY_PENDING_USER_CODE = "pending_user_code"
         private const val KEY_PENDING_VERIFICATION_URI = "pending_verification_uri"

@@ -13,18 +13,28 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.ghissue.app.databinding.ActivityCreateIssueBinding
-import com.ghissue.app.network.ApiClient
-import com.ghissue.app.network.CreateIssueRequest
+import com.ghissue.app.network.CreatedIssue
+import com.ghissue.app.network.ForgeClient
+import com.ghissue.app.network.IntakeExisting
+import com.ghissue.app.network.IntakeQuestion
+import com.ghissue.app.network.IntakeTurn
+import com.ghissue.app.network.MindBlownClient
 import com.ghissue.app.network.QueuedIssue
 import com.ghissue.app.speech.SpeechHelper
 import com.ghissue.app.speech.WakeWordService
+import com.ghissue.app.storage.Forges
 import com.ghissue.app.storage.IssueQueueManager
 import com.ghissue.app.storage.PrefsStore
-import com.ghissue.app.storage.TokenStore
+import com.ghissue.app.storage.RepoRef
 import com.ghissue.app.widget.CreateIssueWidgetProvider
 import android.appwidget.AppWidgetManager
 import android.content.res.ColorStateList
+import android.content.Intent
+import android.net.Uri
+import android.widget.LinearLayout
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.chip.Chip
+import com.google.android.material.textview.MaterialTextView
 import com.google.android.material.textfield.TextInputLayout
 import kotlinx.coroutines.launch
 import java.io.IOException
@@ -43,10 +53,16 @@ class CreateIssueActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityCreateIssueBinding
     private lateinit var prefsStore: PrefsStore
-    private lateinit var tokenStore: TokenStore
+    private lateinit var forges: Forges
     private lateinit var issueQueueManager: IssueQueueManager
+    private lateinit var repo: RepoRef
+    private lateinit var client: ForgeClient
     private var repoOwner: String = ""
     private var repoName: String = ""
+
+    // Ticket intake state (MindBlown only)
+    private var intakeId: String? = null
+    private var intakeTurn: IntakeTurn? = null
     private var pendingSelectedLabels: List<String>? = null
 
     private lateinit var speechHelper: SpeechHelper
@@ -71,7 +87,7 @@ class CreateIssueActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         prefsStore = PrefsStore(this)
-        tokenStore = TokenStore(this)
+        forges = Forges(this)
         issueQueueManager = (application as GhIssueApp).issueQueueManager
 
         val widgetId = intent.getIntExtra(
@@ -82,23 +98,33 @@ class CreateIssueActivity : AppCompatActivity() {
             prefsStore.getWidgetRepo(widgetId)
         } else null
 
-        repoOwner = widgetRepo?.first ?: prefsStore.repoOwner
-        repoName = widgetRepo?.second ?: prefsStore.repoName
-
-        if (repoOwner.isBlank() || repoName.isBlank()) {
+        val selectedRepo = widgetRepo ?: prefsStore.defaultRepo
+        if (selectedRepo == null) {
             Toast.makeText(this, R.string.error_not_configured, Toast.LENGTH_LONG).show()
             finish()
             return
         }
+        repo = selectedRepo
+        repoOwner = repo.owner
+        repoName = repo.name
 
-        if (!tokenStore.isLoggedIn) {
+        val repoClient = forges.client(repo.account)
+        if (repoClient == null) {
             Toast.makeText(this, R.string.error_not_logged_in, Toast.LENGTH_LONG).show()
             finish()
             return
         }
+        client = repoClient
 
         binding.textRepoHeader.text = repoName
-        binding.textUsernameHeader.text = repoOwner
+        // MindBlown's owner is a map id; show the host instead
+        binding.textUsernameHeader.text =
+            if (client is MindBlownClient) repo.account else repoOwner
+
+        if (client is MindBlownClient) {
+            binding.btnRefine.visibility = View.VISIBLE
+            binding.btnRefine.setOnClickListener { startRefine(null) }
+        }
 
         binding.btnCancel.setOnClickListener { finish() }
         binding.btnSubmit.setOnClickListener { submitIssue() }
@@ -218,12 +244,7 @@ class CreateIssueActivity : AppCompatActivity() {
     private fun fetchLabels() {
         lifecycleScope.launch {
             try {
-                val token = "Bearer ${tokenStore.accessToken}"
-                val labels = ApiClient.gitHubApi.listLabels(
-                    token = token,
-                    owner = repoOwner,
-                    repo = repoName
-                )
+                val labels = client.listLabels(repoOwner, repoName)
                 for (label in labels) {
                     val chip = Chip(this@CreateIssueActivity)
                     chip.text = label.name
@@ -280,20 +301,26 @@ class CreateIssueActivity : AppCompatActivity() {
 
         setLoading(true)
 
+        val turn = intakeTurn
+        val draft = turn?.draft
         lifecycleScope.launch {
             try {
-                val token = "Bearer ${tokenStore.accessToken}"
-                ApiClient.gitHubApi.createIssue(
-                    token = token,
-                    owner = repoOwner,
-                    repo = repoName,
-                    request = CreateIssueRequest(title = title, body = body, labels = selectedLabels.ifEmpty { null })
-                )
-                Toast.makeText(
-                    this@CreateIssueActivity,
-                    R.string.issue_created,
-                    Toast.LENGTH_SHORT
-                ).show()
+                val result = if (draft != null && client is MindBlownClient) {
+                    // Submit what the user sees; keep the draft's hidden placement
+                    val known = chips().map { it.text.toString() }.toSet()
+                    val draftTags = draft.optJSONArray("tags")?.let { arr ->
+                        (0 until arr.length()).map { arr.getString(it) }
+                    }.orEmpty()
+                    val tags = selectedLabels + draftTags.filter { it !in known && it !in selectedLabels }
+                    val related = turn.existing.firstOrNull().takeIf { turn.verdict != "new" }
+                    (client as MindBlownClient).intakeCreate(
+                        repoOwner, draft, title, body.orEmpty(), tags, intakeId,
+                        createIssue = turn.repoConnected, existing = related
+                    )
+                } else {
+                    client.createIssue(repoOwner, repoName, title, body, selectedLabels)
+                }
+                showCreated(result)
                 finish()
             } catch (e: IOException) {
                 val queued = QueuedIssue(
@@ -303,7 +330,8 @@ class CreateIssueActivity : AppCompatActivity() {
                     title = title,
                     body = body,
                     labels = selectedLabels.ifEmpty { null },
-                    createdAt = System.currentTimeMillis()
+                    createdAt = System.currentTimeMillis(),
+                    account = repo.account
                 )
                 issueQueueManager.enqueue(queued)
                 val count = issueQueueManager.count()
@@ -329,7 +357,7 @@ class CreateIssueActivity : AppCompatActivity() {
         if (count == 0) return
         updatePendingCount()
         lifecycleScope.launch {
-            val result = issueQueueManager.drainQueue(tokenStore)
+            val result = issueQueueManager.drainQueue(forges)
             if (result.submitted > 0) {
                 Toast.makeText(
                     this@CreateIssueActivity,
@@ -364,7 +392,20 @@ class CreateIssueActivity : AppCompatActivity() {
         outState.putStringArrayList(KEY_SELECTED_LABELS, ArrayList(selected))
     }
 
+    private fun setEnabledDeep(view: View, enabled: Boolean) {
+        view.isEnabled = enabled
+        if (view is android.view.ViewGroup) {
+            for (i in 0 until view.childCount) setEnabledDeep(view.getChildAt(i), enabled)
+        }
+    }
+
     private fun resetForm() {
+        intakeId = null
+        intakeTurn = null
+        binding.refinePanel.visibility = View.GONE
+        binding.questionsContainer.removeAllViews()
+        binding.existingContainer.removeAllViews()
+        binding.btnSubmit.setText(R.string.btn_submit)
         binding.editIssueTitle.text?.clear()
         binding.editIssueBody.text?.clear()
         for (i in 0 until binding.chipGroupLabels.childCount) {
@@ -373,9 +414,194 @@ class CreateIssueActivity : AppCompatActivity() {
         binding.editIssueTitle.requestFocus()
     }
 
+    private fun chips(): List<Chip> =
+        (0 until binding.chipGroupLabels.childCount).map { binding.chipGroupLabels.getChildAt(it) as Chip }
+
+    private fun showCreated(result: CreatedIssue) {
+        val message = when {
+            result.warning != null -> "${result.summary}\n${result.warning}"
+            result.number != null -> "${getString(R.string.issue_created)} ${result.summary}"
+            else -> "${getString(R.string.node_created)}: ${result.summary}"
+        }
+        Toast.makeText(
+            this, message,
+            if (result.warning != null) Toast.LENGTH_LONG else Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    // ── Refine (MindBlown ticket intake) ──
+
+    /** [message] null = send the current title and body. */
+    private fun startRefine(message: String?) {
+        val mb = client as? MindBlownClient ?: return
+        val text = message ?: listOf(
+            binding.editIssueTitle.text.toString().trim(),
+            binding.editIssueBody.text.toString().trim()
+        ).filter { it.isNotEmpty() }.joinToString("\n\n")
+        if (text.isBlank()) {
+            Toast.makeText(this, R.string.refine_empty, Toast.LENGTH_SHORT).show()
+            return
+        }
+        binding.refinePanel.visibility = View.VISIBLE
+        binding.textRefineStatus.setText(R.string.refine_working)
+        setLoading(true)
+        lifecycleScope.launch {
+            try {
+                showIntake(mb.intake(repoOwner, text, intakeId))
+            } catch (e: Exception) {
+                // An expired session is the usual cause; the next Refine starts fresh
+                intakeId = null
+                binding.textRefineStatus.text = getString(R.string.refine_failed, e.message)
+            } finally {
+                setLoading(false)
+            }
+        }
+    }
+
+    private fun showIntake(turn: IntakeTurn) {
+        intakeTurn = turn
+        intakeId = turn.intakeId
+
+        binding.questionsContainer.removeAllViews()
+        for (q in turn.questions) binding.questionsContainer.addView(questionView(q))
+
+        val draft = turn.draft
+        if (draft != null) {
+            binding.editIssueTitle.setText(draft.optString("title"))
+            binding.editIssueBody.setText(draft.optString("description"))
+            val tags = draft.optJSONArray("tags")?.let { arr ->
+                (0 until arr.length()).map { arr.getString(it) }.toSet()
+            }.orEmpty()
+            for (chip in chips()) {
+                if (chip.text.toString() in tags) chip.isChecked = true
+            }
+        }
+        showExisting(turn)
+
+        val status = buildString {
+            append(turn.text.ifBlank { if (draft != null) getString(R.string.refine_done) else "" })
+            if (turn.stepLimit) append("\n").append(getString(R.string.refine_step_limit))
+        }
+        binding.textRefineStatus.text = status.trim()
+    }
+
+    private fun questionView(q: IntakeQuestion): View {
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        box.addView(MaterialTextView(this).apply {
+            text = q.question
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        })
+        val options = com.google.android.material.chip.ChipGroup(this)
+        for (option in q.options) {
+            options.addView(Chip(this).apply {
+                text = option
+                setOnClickListener { startRefine("${q.question} → $option") }
+            })
+        }
+        box.addView(options)
+        return box
+    }
+
+    private fun showExisting(turn: IntakeTurn) {
+        val container = binding.existingContainer
+        container.removeAllViews()
+        val existing = turn.existing
+        if (turn.draft == null || turn.verdict == "new" || existing.isEmpty()) {
+            binding.btnSubmit.setText(R.string.btn_submit)
+            return
+        }
+
+        container.addView(MaterialTextView(this).apply {
+            setText(
+                when (turn.verdict) {
+                    "covered" -> R.string.verdict_covered
+                    "extends" -> R.string.verdict_extends
+                    "regression" -> R.string.verdict_regression
+                    else -> R.string.verdict_similar
+                }
+            )
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        })
+        // Top three keep the dialog on screen
+        for (ex in existing.take(3)) container.addView(existingView(ex))
+        container.addView(actionButton(
+            R.string.btn_nothing_to_do, existing.any { it.recommendation == "nothing" }
+        ) { existingAction("none", null) })
+        binding.btnSubmit.setText(R.string.btn_create_anyway)
+    }
+
+    private fun existingView(ex: IntakeExisting): View {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 8, 0, 8)
+        }
+        val ref = ex.issueNumber?.let { "#$it " } ?: ""
+        val facts = listOfNotNull(ex.status, if (ex.fixedByPr) "fixed by PR" else null)
+        box.addView(MaterialTextView(this).apply {
+            text = buildString {
+                append(ref).append(ex.text)
+                if (facts.isNotEmpty()) append(" (").append(facts.joinToString(", ")).append(")")
+                if (ex.reason.isNotBlank()) append("\n").append(ex.reason)
+            }
+            ex.url?.let { url ->
+                setOnClickListener { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            }
+        })
+        val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        buttons.addView(actionButton(R.string.btn_comment, ex.recommendation == "comment") {
+            existingAction("comment", ex)
+        })
+        buttons.addView(actionButton(R.string.btn_reopen, ex.recommendation == "reopen") {
+            existingAction("reopen", ex)
+        })
+        box.addView(buttons)
+        return box
+    }
+
+    /** Recommended actions get a filled button, the rest a text button. */
+    private fun actionButton(text: Int, recommended: Boolean, onClick: () -> Unit): MaterialButton {
+        val style = if (recommended) com.google.android.material.R.attr.materialButtonStyle
+        else com.google.android.material.R.attr.borderlessButtonStyle
+        return MaterialButton(this, null, style).apply {
+            setText(text)
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun existingAction(action: String, ex: IntakeExisting?) {
+        val mb = client as? MindBlownClient ?: return
+        val note = binding.editIssueBody.text.toString().trim()
+            .ifBlank { binding.editIssueTitle.text.toString().trim() }
+        setLoading(true)
+        lifecycleScope.launch {
+            try {
+                mb.intakeExistingAction(repoOwner, action, ex, note, intakeId)
+                val ref = ex?.issueNumber?.let { "#$it" } ?: ex?.text.orEmpty()
+                val message = when (action) {
+                    "comment" -> getString(R.string.existing_commented, ref)
+                    "reopen" -> getString(R.string.existing_reopened, ref)
+                    else -> getString(R.string.existing_nothing)
+                }
+                Toast.makeText(this@CreateIssueActivity, message, Toast.LENGTH_SHORT).show()
+                finish()
+            } catch (e: Exception) {
+                Toast.makeText(
+                    this@CreateIssueActivity,
+                    getString(R.string.action_failed, e.message),
+                    Toast.LENGTH_LONG
+                ).show()
+                setLoading(false)
+            }
+        }
+    }
+
     private fun setLoading(loading: Boolean) {
         binding.progressBar.visibility = if (loading) View.VISIBLE else View.GONE
         binding.btnSubmit.isEnabled = !loading
+        binding.btnRefine.isEnabled = !loading
+        for (container in listOf(binding.questionsContainer, binding.existingContainer)) {
+            setEnabledDeep(container, !loading)
+        }
         binding.btnSendBody.isEnabled = !loading
         binding.btnReset.isEnabled = !loading
         binding.btnCancel.isEnabled = !loading
