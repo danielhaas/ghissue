@@ -53,6 +53,10 @@ class IssueResponse:
         return f"#{self.number}: {self.title}" if self.number else self.title
 
 
+class IntakeError(Exception):
+    """MindBlown refused or failed an intake call; the message is user-facing."""
+
+
 class OAuthPendingError(Exception):
     """Authorization is still pending."""
 
@@ -416,6 +420,83 @@ class MindBlownAPI:
             html_url=issue["html_url"],
             title=node["text"],
         )
+
+    # ── Ticket intake (AI rewrite + duplicate check) ──
+    #
+    # intake() drafts without writing anything; a session (intake_id) keeps
+    # the conversation for follow-up answers. The accept calls act on it.
+
+    _INTAKE_TIMEOUT = 180  # a model turn, possibly on a local backend
+
+    def _post_intake(self, token: str, path: str, payload: dict) -> dict:
+        resp = self.session.post(
+            f"{self.base_url}/api/ai/{path}",
+            json=payload,
+            headers=self._auth_headers(token),
+            timeout=self._INTAKE_TIMEOUT,
+        )
+        if not resp.ok:
+            try:
+                message = resp.json()["error"]["message"]
+            except (ValueError, KeyError, TypeError):
+                message = f"HTTP {resp.status_code}"
+            raise IntakeError(message)
+        return resp.json()
+
+    def intake(self, token: str, map_id: str, message: str,
+               intake_id: str | None = None) -> dict:
+        """One intake turn: {intakeId, text, draft, questions, stepLimit, repoConnected}."""
+        return self._post_intake(token, "intake", {
+            "mapId": map_id, "message": message, "intakeId": intake_id,
+        })
+
+    def intake_create(
+        self, token: str, map_id: str, draft: dict, intake_id: str | None,
+        create_issue: bool, existing: dict | None = None,
+    ) -> IssueResponse:
+        """Create the (edited) draft as a node, plus its forge issue if asked."""
+        estimate = draft.get("estimate") or {}
+        payload_draft = {
+            "title": draft["title"],
+            "description": draft["description"],
+            "parentId": draft["parentId"],
+            "priority": draft.get("priority"),
+            "versionId": draft.get("versionId"),
+            "phaseId": draft.get("phaseId"),
+            "tags": draft.get("tags", []),
+            "dependencies": [{"nodeId": d["nodeId"]} for d in draft.get("dependencies", [])],
+        }
+        # Same rule as MindBlown's own card: a low-confidence estimate stays a suggestion
+        if estimate.get("confidence") in ("medium", "high"):
+            payload_draft["effortEstimate"] = estimate["estimate"]
+        d = self._post_intake(token, "intake/accept", {
+            "mapId": map_id,
+            "action": "create",
+            "draft": payload_draft,
+            "existing": existing,
+            "intakeId": intake_id,
+            "createIssue": create_issue,
+        })
+        issue = d.get("issue")
+        return IssueResponse(
+            number=issue["number"] if issue else None,
+            html_url=issue["html_url"] if issue else f"{self.base_url}/?map={map_id}",
+            title=d["node"]["text"],
+            warning=d.get("issueError"),
+        )
+
+    def intake_existing_action(
+        self, token: str, map_id: str, action: str, existing: dict,
+        note: str, intake_id: str | None,
+    ) -> dict:
+        """Comment on / reopen an existing ticket, or record 'none'."""
+        return self._post_intake(token, "intake/accept", {
+            "mapId": map_id,
+            "action": action,
+            "existing": existing,
+            "note": note,
+            "intakeId": intake_id,
+        })
 
     def list_labels(self, token: str, owner: str, repo: str) -> list[Label]:
         nodes = self._get_map(token, owner)["nodes"]

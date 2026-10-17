@@ -14,6 +14,15 @@ from ..queue import IssueQueue, QueuedIssue
 import requests
 
 
+_RESPONSE_REFINE = 1
+
+_VERDICT_TEXT = {
+    "covered": "An existing ticket already covers this:",
+    "extends": "This adds to an existing ticket:",
+    "regression": "This looks like a regression of:",
+}
+
+
 def _label_css(color_hex: str) -> str:
     """Return CSS for a label toggle button given a hex color (no '#')."""
     r = int(color_hex[0:2], 16)
@@ -51,6 +60,13 @@ class CreateIssueDialog(Gtk.Dialog):
         self._account = repo_cfg["account"]
         self._owner = repo_cfg["owner"]
         self._repo = repo_cfg["name"]
+        self._repo_cfg = repo_cfg
+        account = config.find_account(app.cfg, self._account)
+        self._is_mindblown = bool(account) and account["kind"] == "mindblown"
+        # Ticket intake state (MindBlown only): session, latest draft, its result
+        self._intake_id = None
+        self._draft = None
+        self._intake = None
         self._labels: list[Label] = []
         self._label_buttons: list[tuple[Gtk.ToggleButton, Label]] = []
 
@@ -73,6 +89,9 @@ class CreateIssueDialog(Gtk.Dialog):
             f'<span size="small" foreground="gray">{" — ".join(header_parts)}</span>'
         )
         box.add(header)
+
+        if self._is_mindblown:
+            self._build_refine_panel(box)
 
         # Title
         box.add(Gtk.Label(label="Title:", xalign=0))
@@ -115,6 +134,12 @@ class CreateIssueDialog(Gtk.Dialog):
 
         # Buttons
         self.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        self._refine_btn = None
+        if self._is_mindblown:
+            self._refine_btn = self.add_button("Refine…", _RESPONSE_REFINE)
+            self._refine_btn.set_tooltip_text(
+                "Let MindBlown rewrite the ticket and look for similar ones"
+            )
         self._submit_btn = self.add_button("Submit", Gtk.ResponseType.OK)
         self._submit_btn.get_style_context().add_class("suggested-action")
 
@@ -124,6 +149,216 @@ class CreateIssueDialog(Gtk.Dialog):
 
         # Fetch labels in background
         self._fetch_labels()
+
+    # ── Refine (MindBlown ticket intake) ──
+
+    def _build_refine_panel(self, box):
+        self._refine_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self._refine_box.set_no_show_all(True)
+
+        status_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self._refine_spinner = Gtk.Spinner()
+        status_row.pack_start(self._refine_spinner, False, False, 0)
+        self._refine_status = Gtk.Label(xalign=0)
+        self._refine_status.set_line_wrap(True)
+        self._refine_status.set_selectable(True)
+        status_row.pack_start(self._refine_status, True, True, 0)
+        self._refine_box.add(status_row)
+
+        self._questions_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        self._refine_box.add(self._questions_box)
+
+        self._existing_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        existing_scroll = Gtk.ScrolledWindow()
+        existing_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        existing_scroll.set_propagate_natural_height(True)
+        existing_scroll.set_max_content_height(180)
+        existing_scroll.add(self._existing_box)
+        self._refine_box.add(existing_scroll)
+
+        self._refine_box.add(Gtk.Separator())
+        box.add(self._refine_box)
+
+    def _show_refine_panel(self):
+        self._refine_box.set_no_show_all(False)
+        self._refine_box.show_all()
+
+    def _set_busy(self, busy: bool, status: str = None):
+        self._submit_btn.set_sensitive(not busy)
+        if self._is_mindblown:
+            self._refine_btn.set_sensitive(not busy)
+            for b in (self._questions_box, self._existing_box):
+                b.set_sensitive(not busy)
+            if busy:
+                self._refine_spinner.start()
+            else:
+                self._refine_spinner.stop()
+            if status is not None:
+                self._refine_status.set_text(status)
+
+    def _get_body(self) -> str:
+        buf = self._body_view.get_buffer()
+        return buf.get_text(buf.get_start_iter(), buf.get_end_iter(), True).strip()
+
+    def _start_refine(self, message: str = None):
+        if message is None:
+            title = self._title_entry.get_text().strip()
+            body = self._get_body()
+            message = f"{title}\n\n{body}".strip()
+        if not message:
+            self._show_error("Write something to refine first.")
+            return
+        client = self._app.client(self._account)
+        if not client:
+            self._show_error(f"Not logged in to {self._account}.")
+            return
+        api, token = client
+
+        self._show_refine_panel()
+        self._set_busy(True, "Asking MindBlown…")
+        intake_id = self._intake_id
+
+        def _run():
+            try:
+                result = api.intake(token, self._owner, message, intake_id)
+                GLib.idle_add(self._on_intake, result)
+            except Exception as e:
+                GLib.idle_add(self._on_intake_error, str(e))
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _on_intake_error(self, msg):
+        # An expired session is the usual cause; the next Refine starts fresh
+        self._intake_id = None
+        self._set_busy(False, f"Refine failed: {msg}")
+
+    def _on_intake(self, result):
+        self._intake = result
+        self._intake_id = result.get("intakeId")
+        status = result.get("text") or ""
+        if result.get("stepLimit"):
+            status += "\n(MindBlown ran out of steps; try Refine again.)"
+
+        for child in self._questions_box.get_children():
+            child.destroy()
+        for q in result.get("questions", []):
+            self._questions_box.add(self._make_question(q))
+
+        draft = result.get("draft")
+        if draft:
+            self._draft = draft
+            self._title_entry.set_text(draft["title"])
+            self._body_view.get_buffer().set_text(draft["description"])
+            draft_tags = set(draft.get("tags", []))
+            for btn, label in self._label_buttons:
+                if label.name in draft_tags:
+                    btn.set_active(True)
+        self._show_existing(draft)
+
+        if not status:
+            status = "Refined. Edit if needed, then Submit." if draft else ""
+        self._set_busy(False, status)
+        self._refine_box.show_all()
+
+    def _make_question(self, q: dict) -> Gtk.Widget:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        lbl = Gtk.Label(xalign=0)
+        lbl.set_line_wrap(True)
+        lbl.set_markup(f"<b>{GLib.markup_escape_text(q['question'])}</b>")
+        box.add(lbl)
+        options = Gtk.FlowBox()
+        options.set_selection_mode(Gtk.SelectionMode.NONE)
+        options.set_max_children_per_line(4)
+        for opt in q.get("options", []):
+            btn = Gtk.Button(label=opt)
+            btn.connect(
+                "clicked",
+                lambda _b, o=opt: self._start_refine(f"{q['question']} → {o}"),
+            )
+            options.add(btn)
+        box.add(options)
+        return box
+
+    def _show_existing(self, draft):
+        for child in self._existing_box.get_children():
+            child.destroy()
+        verdict = draft.get("verdict", "new") if draft else "new"
+        existing = draft.get("existing", []) if draft else []
+        if verdict == "new" or not existing:
+            self._submit_btn.set_label("Submit")
+            return
+
+        head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        head_lbl = Gtk.Label(label=_VERDICT_TEXT.get(verdict, "Similar tickets:"), xalign=0)
+        head.pack_start(head_lbl, True, True, 0)
+        nothing_btn = Gtk.Button(label="Nothing to Do")
+        nothing_btn.connect("clicked", lambda _b: self._on_existing_action("none", None))
+        if any(e["recommendation"] == "nothing" for e in existing):
+            nothing_btn.get_style_context().add_class("suggested-action")
+        head.pack_start(nothing_btn, False, False, 0)
+        self._existing_box.add(head)
+
+        for ex in existing:
+            self._existing_box.add(self._make_existing_row(ex))
+        self._submit_btn.set_label("Create Anyway")
+
+    def _make_existing_row(self, ex: dict) -> Gtk.Widget:
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        ref = f"#{ex['issueNumber']} " if ex.get("issueNumber") else ""
+        title = GLib.markup_escape_text(f"{ref}{ex['text']}")
+        if ex.get("url"):
+            title = f'<a href="{GLib.markup_escape_text(ex["url"])}">{title}</a>'
+        facts = [f for f in (ex.get("status"), "fixed by PR" if ex.get("fixedByPr") else None) if f]
+        lbl = Gtk.Label(xalign=0)
+        lbl.set_line_wrap(True)
+        lbl.set_markup(
+            f"{title}"
+            + (f' <span size="small" foreground="gray">{GLib.markup_escape_text(", ".join(facts))}</span>' if facts else "")
+            + f'\n<span size="small">{GLib.markup_escape_text(ex.get("reason", ""))}</span>'
+        )
+        row.pack_start(lbl, True, True, 0)
+
+        for action, text in (("comment", "Comment"), ("reopen", "Reopen")):
+            btn = Gtk.Button(label=text)
+            btn.set_valign(Gtk.Align.CENTER)
+            if ex.get("recommendation") == action:
+                btn.get_style_context().add_class("suggested-action")
+            btn.connect("clicked", lambda _b, a=action: self._on_existing_action(a, ex))
+            row.pack_start(btn, False, False, 0)
+        return row
+
+    def _on_existing_action(self, action: str, ex: dict | None):
+        note = self._get_body() or self._title_entry.get_text().strip()
+        client = self._app.client(self._account)
+        if not client:
+            self._show_error(f"Not logged in to {self._account}.")
+            return
+        api, token = client
+        existing = {"nodeId": ex.get("nodeId"), "issueNumber": ex.get("issueNumber")} if ex else None
+        self._set_busy(True, "Working…")
+        intake_id = self._intake_id
+
+        def _run():
+            try:
+                api.intake_existing_action(token, self._owner, action, existing, note, intake_id)
+                GLib.idle_add(self._on_existing_done, action, ex)
+            except Exception as e:
+                GLib.idle_add(self._on_existing_error, str(e))
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _on_existing_done(self, action, ex):
+        if action == "none":
+            self._app._notify("Nothing created", "An existing ticket already covers this.")
+        else:
+            ref = f"#{ex['issueNumber']}" if ex.get("issueNumber") else ex["text"]
+            verb = "Commented on" if action == "comment" else "Reopened"
+            self._app._notify(f"{verb} {ref}", ex["text"])
+        self.response(Gtk.ResponseType.CLOSE)
+
+    def _on_existing_error(self, msg):
+        self._set_busy(False, "")
+        self._show_error(f"Failed:\n{msg}")
 
     def _fetch_labels(self):
         client = self._app.client(self._account)
@@ -208,7 +443,15 @@ class CreateIssueDialog(Gtk.Dialog):
         ]
 
     def _on_response(self, dialog, response_id):
+        if response_id == _RESPONSE_REFINE:
+            dialog.stop_emission_by_name("response")
+            self._start_refine()
+            return
         if response_id != Gtk.ResponseType.OK:
+            return
+        if not self._submit_btn.get_sensitive():
+            # Ctrl+Enter while a request is running
+            dialog.stop_emission_by_name("response")
             return
 
         title = self._title_entry.get_text().strip()
@@ -217,8 +460,7 @@ class CreateIssueDialog(Gtk.Dialog):
             dialog.stop_emission_by_name("response")
             return
 
-        buf = self._body_view.get_buffer()
-        body = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), True).strip()
+        body = self._get_body()
         labels = self._get_selected_labels()
 
         client = self._app.client(self._account)
@@ -232,15 +474,38 @@ class CreateIssueDialog(Gtk.Dialog):
         name = self._repo
 
         # Disable submit while working
-        self._submit_btn.set_sensitive(False)
+        self._set_busy(True)
         self._submit_btn.set_label("Submitting...")
 
         # Stop the dialog from closing
         dialog.stop_emission_by_name("response")
 
+        intake = self._intake
+        draft = self._draft
+        if draft:
+            # Submit what the user sees; keep the draft's hidden placement
+            known = {label.name for label in self._labels}
+            draft = dict(
+                draft, title=title, description=body,
+                tags=labels + [t for t in draft.get("tags", []) if t not in known],
+            )
+            top = draft.get("existing") or [None]
+            existing = (
+                {"nodeId": top[0].get("nodeId"), "issueNumber": top[0].get("issueNumber")}
+                if top[0] and draft.get("verdict", "new") != "new" else None
+            )
+            create_issue = (
+                self._repo_cfg.get("link_issue", True) and intake.get("repoConnected", False)
+            )
+
         def _submit():
             try:
-                result = api.create_issue(token, owner, name, title, body, labels)
+                if draft:
+                    result = api.intake_create(
+                        token, owner, draft, self._intake_id, create_issue, existing,
+                    )
+                else:
+                    result = api.create_issue(token, owner, name, title, body, labels)
                 GLib.idle_add(self._on_submit_success, result)
             except requests.ConnectionError:
                 issue = QueuedIssue(
@@ -269,9 +534,12 @@ class CreateIssueDialog(Gtk.Dialog):
         self.response(Gtk.ResponseType.CLOSE)
 
     def _on_submit_error(self, msg):
-        self._submit_btn.set_sensitive(True)
-        self._submit_btn.set_label("Submit")
+        self._set_busy(False)
+        self._submit_btn.set_label("Create Anyway" if self._existing_box_has_rows() else "Submit")
         self._show_error(f"Failed to create issue:\n{msg}")
+
+    def _existing_box_has_rows(self) -> bool:
+        return self._is_mindblown and bool(self._existing_box.get_children())
 
     def _show_error(self, msg):
         dlg = Gtk.MessageDialog(
