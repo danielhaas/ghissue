@@ -148,6 +148,14 @@ def remove_repo(cfg: dict, account: str, owner: str, name: str):
     ]
 
 
+def find_map_repo(cfg: dict, account: str, map_id: str) -> dict:
+    """Find a MindBlown repo entry by map id (stored as owner); {} if absent."""
+    for r in cfg.get("repos", []):
+        if r["account"] == account and r["owner"] == map_id:
+            return r
+    return {}
+
+
 def repo_display_name(cfg: dict, repo: dict) -> str:
     """Human-readable repo name, suffixed with the host for non-GitHub accounts.
 

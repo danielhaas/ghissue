@@ -606,6 +606,19 @@ class RepoConfigDialog(Gtk.Dialog):
 
         box.add(Gtk.Separator())
 
+        # ── Linked issue (MindBlown only) ──
+        account = config.find_account(parent._cfg, repo["account"])
+        if account and account["kind"] == "mindblown":
+            link_check = Gtk.CheckButton(
+                label="Also create an issue in the map's linked repo",
+            )
+            link_check.set_active(repo.get("link_issue", True))
+            link_check.connect(
+                "toggled", lambda b: repo.__setitem__("link_issue", b.get_active()),
+            )
+            box.add(link_check)
+            box.add(Gtk.Separator())
+
         # ── Default labels ──
         box.add(Gtk.Label(label="Default labels:", xalign=0))
 

@@ -4,6 +4,8 @@ All three expose the same surface: list_repos, list_labels, create_issue.
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+
 import requests
 
 _API_BASE = "https://api.github.com"
@@ -43,9 +45,10 @@ class Repo:
 
 @dataclass
 class IssueResponse:
-    number: int | None  # None for MindBlown nodes
+    number: int | None  # None for MindBlown nodes without a linked issue
     html_url: str
     title: str
+    warning: str | None = None  # created, but something secondary failed
 
     @property
     def summary(self) -> str:
@@ -246,6 +249,16 @@ class GiteaAPI:
         resp.raise_for_status()
         return resp.json()["login"]
 
+    def has_repo(self, token: str, owner: str, repo: str) -> bool:
+        resp = self.session.get(
+            f"{self.api_base}/repos/{owner}/{repo}",
+            headers=self._auth_headers(token),
+        )
+        if resp.status_code == 404:
+            return False
+        resp.raise_for_status()
+        return True
+
     def token_settings_url(self) -> str:
         return f"{self.base_url}/user/settings/applications"
 
@@ -307,7 +320,12 @@ class MindBlownAPI:
     """MindBlown REST API. Maps stand in for repos, nodes for issues, tags for labels.
 
     Repo.owner carries the map id and Repo.name the map name. New nodes are
-    added under the map's root node.
+    added under the map's issue inbox node, or its root if it has none.
+
+    If the map is linked to a repo, a matching issue is created and linked:
+    through MindBlown's GitHub App for GitHub repos, or directly through a
+    ghissue Gitea account for maps whose repo lives on Gitea (MindBlown
+    stores those in its github* fields, without an installation).
     """
 
     _TAG_COLOR = "8b949e"  # tags have no color of their own
@@ -315,6 +333,11 @@ class MindBlownAPI:
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip("/")
         self.session = _new_session()
+        # Set by the caller, which knows the config and the other accounts:
+        # should_link(map_id) -> bool
+        # find_gitea(owner, repo) -> (GiteaAPI, token) | None
+        self.should_link = lambda map_id: True
+        self.find_gitea = lambda owner, repo: None
 
     def _auth_headers(self, token: str) -> dict:
         return {"Authorization": f"Bearer {token}"}
@@ -350,10 +373,11 @@ class MindBlownAPI:
         title: str, body: str, labels: list[str],
     ) -> IssueResponse:
         map_id = owner
-        root_id = self._get_map(token, map_id)["map"]["rootNodeId"]
+        map_info = self._get_map(token, map_id)["map"]
+        parent_id = map_info.get("githubInboxNodeId") or map_info["rootNodeId"]
         resp = self.session.post(
             f"{self.base_url}/api/maps/{map_id}/nodes",
-            json={"parentId": root_id, "text": title},
+            json={"parentId": parent_id, "text": title},
             headers=self._auth_headers(token),
         )
         resp.raise_for_status()
@@ -373,11 +397,76 @@ class MindBlownAPI:
             )
             resp.raise_for_status()
 
-        return IssueResponse(
+        result = IssueResponse(
             number=None,
             html_url=f"{self.base_url}/?map={map_id}",
             title=node["text"],
         )
+        linked_owner = map_info.get("githubRepoOwner")
+        linked_repo = map_info.get("githubRepoName")
+        if not (linked_owner and linked_repo and self.should_link(map_id)):
+            return result
+
+        # The node exists now; a failure from here on must not raise, or the
+        # caller would queue/retry and create a duplicate node.
+        try:
+            if map_info.get("githubInstallationId"):
+                issue = self._create_github_issue(token, map_id, node["id"])
+            else:
+                issue = self._create_gitea_issue(
+                    token, map_id, node, linked_owner, linked_repo,
+                    title, body, labels,
+                )
+        except Exception as e:
+            result.warning = f"Linked issue in {linked_owner}/{linked_repo} failed: {e}"
+            return result
+        if issue is None:
+            result.warning = (
+                f"No Gitea account can see {linked_owner}/{linked_repo}; "
+                "created the node only."
+            )
+            return result
+        return IssueResponse(
+            number=issue.number,
+            html_url=issue.html_url,
+            title=node["text"],
+            warning=issue.warning,
+        )
+
+    def _create_github_issue(self, token: str, map_id: str, node_id: str) -> IssueResponse:
+        resp = self.session.post(
+            f"{self.base_url}/api/maps/{map_id}/nodes/{node_id}/github/create",
+            headers=self._auth_headers(token),
+        )
+        resp.raise_for_status()
+        issue = resp.json()["issue"]
+        return IssueResponse(issue["number"], issue["html_url"], issue["title"])
+
+    def _create_gitea_issue(
+        self, token: str, map_id: str, node: dict, owner: str, repo: str,
+        title: str, body: str, labels: list[str],
+    ) -> IssueResponse | None:
+        gitea = self.find_gitea(owner, repo)
+        if gitea is None:
+            return None
+        gitea_api, gitea_token = gitea
+        issue = gitea_api.create_issue(gitea_token, owner, repo, title, body, labels)
+
+        link = {
+            "provider": "gitea",
+            "externalId": f"{owner}/{repo}#{issue.number}",
+            "url": issue.html_url,
+            "syncEnabled": False,  # MindBlown has no Gitea sync
+            "lastSyncedAt": datetime.now(timezone.utc).isoformat(),
+        }
+        resp = self.session.put(
+            f"{self.base_url}/api/maps/{map_id}/nodes/{node['id']}",
+            json={"externalLinks": [*node.get("externalLinks", []), link]},
+            headers=self._auth_headers(token),
+        )
+        if not resp.ok:
+            issue.warning = f"Issue #{issue.number} created but not linked to the node."
+        return issue
 
     def list_labels(self, token: str, owner: str, repo: str) -> list[Label]:
         nodes = self._get_map(token, owner)["nodes"]

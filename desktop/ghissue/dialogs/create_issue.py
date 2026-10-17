@@ -256,8 +256,11 @@ class CreateIssueDialog(Gtk.Dialog):
         threading.Thread(target=_submit, daemon=True).start()
 
     def _on_submit_success(self, result):
+        summary = result.summary
+        if result.warning:
+            summary += f"\n{result.warning}"
         self._app._notify(
-            "Issue created" if result.number else "Node created", result.summary,
+            "Issue created" if result.number else "Node created", summary,
         )
         self.response(Gtk.ResponseType.CLOSE)
 
