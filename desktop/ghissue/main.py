@@ -15,7 +15,7 @@ gi.require_version("Notify", "0.7")
 from gi.repository import Gio, GLib, Gtk, Notify
 
 from . import config
-from .api import GiteaAPI, GitHubAPI, client_for
+from .api import GitHubAPI, client_for
 from .keyring import get_token
 from .network import NetworkMonitor
 from .queue import IssueQueue
@@ -97,18 +97,7 @@ class Application:
             api.should_link = lambda map_id: config.find_map_repo(
                 cfg, account_id, map_id,
             ).get("link_issue", True)
-            api.find_gitea = lambda owner, repo: self._find_gitea(cfg, owner, repo)
         return api, token
-
-    def _find_gitea(self, cfg: dict, owner: str, repo: str):
-        """Return (GiteaAPI, token) for the first Gitea account hosting owner/repo."""
-        for account in config.get_accounts(cfg):
-            if account["kind"] != "gitea":
-                continue
-            client = self.client(account["id"], cfg)
-            if client and client[0].has_repo(client[1], owner, repo):
-                return client
-        return None
 
     # ── DBus ──
 
