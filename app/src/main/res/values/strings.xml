@@ -56,8 +56,7 @@
     <string name="btn_mic_title">Dictate title</string>
     <string name="btn_mic_body">Dictate body</string>
     <string name="mic_permission_required">Microphone permission is required for speech input</string>
-    <string name="overlay_permission_required">Display over other apps permission is required for voice activation</string>
-    <string name="issue_created">Issue created!</string>
+        <string name="issue_created">Issue created!</string>
     <string name="error_title_required">Title is required</string>
     <string name="error_not_configured">Please configure the app first</string>
     <string name="error_not_logged_in">Please log in first</string>
@@ -119,21 +118,12 @@
     <!-- Widget Color Picker -->
     <string name="pick_widget_color_title">Pick widget color</string>
 
-    <string name="btn_voice_settings">Voice Activation Settings</string>
+    <string name="btn_voice_settings">Dictation Settings</string>
+    <string name="dictation_section">Dictation</string>
 
     <!-- Speech -->
     <string name="speech_language_label">Dictation Language</string>
     <string name="btn_select_language">Change Language</string>
     <string name="speech_language_default">Device default</string>
 
-    <!-- Wake Word -->
-    <string name="wake_word_section">Voice Activation</string>
-    <string name="wake_phrase_hint">Wake phrase (default: second memory)</string>
-    <string name="wake_word_toggle">Enable voice activation</string>
-    <string name="wake_word_channel_name">Voice Activation</string>
-    <string name="wake_word_channel_description">Listens for wake word to create issues</string>
-    <string name="wake_word_notification_title">ghissue listening</string>
-    <string name="wake_word_notification_text">Say \"Computer\" to create a new issue</string>
-    <string name="wake_word_notification_text_dynamic">Say \"%1$s\" to create a new issue</string>
-    <string name="wake_word_triggered_text">Wake word detected — creating issue</string>
 </resources>

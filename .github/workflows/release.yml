@@ -23,7 +23,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: apk
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          path: app/build/outputs/apk/release/ghissue-release-unsigned.apk
 
   gnome-extension:
     runs-on: ubuntu-latest
@@ -62,7 +62,7 @@ jobs:
           name: gnome-extension
 
       - name: Rename APK
-        run: mv app-release-unsigned.apk ghissue.apk
+        run: mv ghissue-release-unsigned.apk ghissue.apk
 
       - name: Create release
         env:

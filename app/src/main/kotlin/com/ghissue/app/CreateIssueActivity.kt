@@ -21,7 +21,6 @@ import com.ghissue.app.network.IntakeTurn
 import com.ghissue.app.network.MindBlownClient
 import com.ghissue.app.network.QueuedIssue
 import com.ghissue.app.speech.SpeechHelper
-import com.ghissue.app.speech.WakeWordService
 import com.ghissue.app.storage.Forges
 import com.ghissue.app.storage.IssueQueueManager
 import com.ghissue.app.storage.PrefsStore
@@ -231,13 +230,6 @@ class CreateIssueActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         speechHelper.stop()
-        // Resume wake word listening if it was active
-        if (PrefsStore(this).wakeWordEnabled) {
-            val resumeIntent = android.content.Intent(this, WakeWordService::class.java).apply {
-                action = WakeWordService.ACTION_RESUME
-            }
-            startService(resumeIntent)
-        }
         super.onDestroy()
     }
 

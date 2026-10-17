@@ -142,17 +142,9 @@ class PrefsStore(context: Context) {
         get() = prefs.getStringSet(KEY_DEFAULT_LABELS, emptySet()) ?: emptySet()
         set(value) = prefs.edit().putStringSet(KEY_DEFAULT_LABELS, value).apply()
 
-    var wakeWordEnabled: Boolean
-        get() = prefs.getBoolean(KEY_WAKE_WORD_ENABLED, false)
-        set(value) = prefs.edit().putBoolean(KEY_WAKE_WORD_ENABLED, value).apply()
-
     var speechLanguage: String
         get() = prefs.getString(KEY_SPEECH_LANGUAGE, "") ?: ""
         set(value) = prefs.edit().putString(KEY_SPEECH_LANGUAGE, value).apply()
-
-    var wakePhrase: String
-        get() = prefs.getString(KEY_WAKE_PHRASE, "") ?: ""
-        set(value) = prefs.edit().putString(KEY_WAKE_PHRASE, value).apply()
 
     fun clearWidgetRepo(widgetId: Int) {
         prefs.edit()
@@ -177,8 +169,6 @@ class PrefsStore(context: Context) {
         private const val KEY_PENDING_INTERVAL = "pending_interval"
         private const val KEY_PENDING_EXPIRES_AT = "pending_expires_at"
         private const val KEY_DEFAULT_LABELS = "default_labels"
-        private const val KEY_WAKE_WORD_ENABLED = "wake_word_enabled"
         private const val KEY_SPEECH_LANGUAGE = "speech_language"
-        private const val KEY_WAKE_PHRASE = "wake_phrase"
     }
 }

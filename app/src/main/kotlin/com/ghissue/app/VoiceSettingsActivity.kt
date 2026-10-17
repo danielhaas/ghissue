@@ -1,54 +1,16 @@
 package com.ghissue.app
 
-import android.Manifest
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
-import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import com.ghissue.app.databinding.ActivityVoiceSettingsBinding
-import com.ghissue.app.speech.WakeWordService
 import com.ghissue.app.storage.PrefsStore
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import java.util.Locale
 
+/** Dictation language for the mic buttons on the create screen. */
 class VoiceSettingsActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityVoiceSettingsBinding
     private lateinit var prefsStore: PrefsStore
-
-    private val micPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
-            checkOverlayPermission()
-        } else {
-            binding.switchWakeWord.isChecked = false
-            Toast.makeText(this, R.string.mic_permission_required, Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private val notificationPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { _ ->
-        requestMicForWakeWord()
-    }
-
-    private val overlayPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { _ ->
-        if (Settings.canDrawOverlays(this)) {
-            enableWakeWord()
-        } else {
-            binding.switchWakeWord.isChecked = false
-            Toast.makeText(this, R.string.overlay_permission_required, Toast.LENGTH_SHORT).show()
-        }
-    }
 
     companion object {
         private val LANGUAGES = listOf(
@@ -79,36 +41,12 @@ class VoiceSettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityVoiceSettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        binding.root.padForSystemBars()
 
         prefsStore = PrefsStore(this)
 
         updateLanguageDisplay()
         binding.btnSelectLanguage.setOnClickListener { showLanguagePicker() }
-
-        val currentPhrase = prefsStore.wakePhrase
-        binding.editWakePhrase.setText(currentPhrase.ifBlank { null })
-        binding.editWakePhrase.hint = getString(R.string.wake_phrase_hint)
-
-        binding.switchWakeWord.isChecked = prefsStore.wakeWordEnabled
-        binding.switchWakeWord.setOnCheckedChangeListener { _, isChecked ->
-            if (isChecked) {
-                saveWakePhrase()
-                requestNotificationPermissionThenMic()
-            } else {
-                prefsStore.wakeWordEnabled = false
-                WakeWordService.stop(this)
-            }
-        }
-    }
-
-    override fun onPause() {
-        super.onPause()
-        saveWakePhrase()
-    }
-
-    private fun saveWakePhrase() {
-        val phrase = binding.editWakePhrase.text.toString().trim().lowercase()
-        prefsStore.wakePhrase = phrase
     }
 
     private fun updateLanguageDisplay() {
@@ -130,43 +68,5 @@ class VoiceSettingsActivity : AppCompatActivity() {
                 dialog.dismiss()
             }
             .show()
-    }
-
-    private fun requestNotificationPermissionThenMic() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-            != PackageManager.PERMISSION_GRANTED
-        ) {
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            requestMicForWakeWord()
-        }
-    }
-
-    private fun requestMicForWakeWord() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-            == PackageManager.PERMISSION_GRANTED
-        ) {
-            checkOverlayPermission()
-        } else {
-            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-        }
-    }
-
-    private fun checkOverlayPermission() {
-        if (Settings.canDrawOverlays(this)) {
-            enableWakeWord()
-        } else {
-            val intent = Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")
-            )
-            overlayPermissionLauncher.launch(intent)
-        }
-    }
-
-    private fun enableWakeWord() {
-        prefsStore.wakeWordEnabled = true
-        WakeWordService.start(this)
     }
 }

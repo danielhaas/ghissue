@@ -50,6 +50,7 @@ class MainActivity : AppCompatActivity() {
         Log.d(TAG, "onCreate called")
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        binding.root.padForSystemBars()
 
         prefsStore = PrefsStore(this)
         tokenStore = TokenStore(this)
